@@ -17,6 +17,7 @@ export const signup = async (name, email, password) => {
     const response = await fetch(`${API_ENDPOINTS.LOGIN}/register`, {
       method: 'POST',
       headers: API_CONFIG.headers,
+      ...API_CONFIG,
       body: JSON.stringify({ name, email, password })
     });
 
@@ -34,6 +35,7 @@ export const signup = async (name, email, password) => {
   } catch (error) {
     console.error('Signup error:', error);
     throw new Error(error.message || 'Failed to sign up');
+    throw error;
   }
 };
 
@@ -42,6 +44,7 @@ export const login = async (email, password) => {
     const response = await fetch(`${API_ENDPOINTS.LOGIN}/login`, {
       method: 'POST',
       headers: API_CONFIG.headers,
+      ...API_CONFIG,
       body: JSON.stringify({ email, password })
     });
 
@@ -49,6 +52,15 @@ export const login = async (email, password) => {
     
     if (!response.ok) {
       throw new Error(data.message || 'Invalid credentials');
+      // Check specifically for email verification error
+      if (data.message === 'Please verify your email before logging in') {
+        throw new Error('Please check your email for verification link before logging in');
+      }
+      // Check for specific error messages from the server
+      if (data.message) {
+        throw new Error(data.message);
+      }
+      throw new Error('Invalid credentials. Please check your email and password.');
     }
 
     // Store auth data
@@ -59,6 +71,7 @@ export const login = async (email, password) => {
   } catch (error) {
     console.error('Login error:', error);
     throw new Error(error.message || 'Failed to sign in');
+    throw error;
   }
 };
 
@@ -94,4 +107,25 @@ export const getToken = () => {
 export const getUser = () => {
   const user = localStorage.getItem('user');
   return user ? JSON.parse(user) : null;
+};
+
+export const resendVerificationEmail = async (email) => {
+  try {
+    const response = await fetch(`${API_ENDPOINTS.LOGIN}/resend-verification`, {
+      method: 'POST',
+      ...API_CONFIG,
+      body: JSON.stringify({ email })
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to resend verification email');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Resend verification email error:', error);
+    throw error;
+  }
 }; 

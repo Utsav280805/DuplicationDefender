@@ -27,7 +27,6 @@ const Layout = () => {
     setUser(JSON.parse(userData));
   }, [navigate]);
 
-  // If no token, redirect to signin
   if (!localStorage.getItem('token')) {
     return <Navigate to="/signin" />;
   }
@@ -54,15 +53,11 @@ const Layout = () => {
 
   return (
     <div className="flex h-screen bg-gray-100">
-      {/* Sidebar */}
       <div className="w-64 bg-white border-r border-gray-200">
         <div className="flex flex-col h-full">
-          {/* Logo */}
           <div className="p-6 border-b border-gray-200">
             <h1 className="text-2xl font-bold text-blue-600">DDAS</h1>
           </div>
-
-          {/* Navigation */}
           <nav className="flex-1 p-4">
             <ul className="space-y-2">
               {navItems.map((item) => (
@@ -84,8 +79,6 @@ const Layout = () => {
               ))}
             </ul>
           </nav>
-
-          {/* Logout Button */}
           <div className="p-4 border-t border-gray-200">
             <button
               onClick={handleLogout}
@@ -97,22 +90,18 @@ const Layout = () => {
           </div>
         </div>
       </div>
-
-      {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        {/* Top Bar */}
         <div className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-end gap-4">
-          {/* Notifications */}
           <div className="relative">
             <button
               onClick={() => setShowNotifications(!showNotifications)}
               className="p-2 rounded-full hover:bg-gray-100 relative"
             >
               <Bell className="w-5 h-5 text-gray-600" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+              {notifications.length > 0 && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+              )}
             </button>
-
-            {/* Notifications Dropdown */}
             {showNotifications && (
               <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 py-2">
                 <div className="px-4 py-2 border-b border-gray-100">
@@ -132,22 +121,18 @@ const Layout = () => {
               </div>
             )}
           </div>
-
-          {/* Profile */}
           <div className="relative">
             <button
               onClick={() => setShowProfileMenu(!showProfileMenu)}
               className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100"
             >
               <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
-                {user?.name?.[0]?.toUpperCase() || 'U'}
+                {user?.name?.split(' ').map(n => n[0].toUpperCase()).join('') || 'U'}
               </div>
               <span className="text-sm font-medium">
                 {user?.name || 'User'}
               </span>
             </button>
-
-            {/* Profile Dropdown */}
             {showProfileMenu && (
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200">
                 <NavLink
@@ -171,8 +156,6 @@ const Layout = () => {
             )}
           </div>
         </div>
-
-        {/* Page Content */}
         <main className="flex-1 overflow-auto p-6">
           <Outlet />
         </main>
@@ -181,4 +164,4 @@ const Layout = () => {
   );
 };
 
-export default Layout; 
+export default Layout;

@@ -127,17 +127,17 @@ const Layout = () => {
               className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100"
             >
               <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
-                {user?.name?.split(' ').map(n => n[0].toUpperCase()).join('') || 'U'}
+                {user?.name?.[0]?.toUpperCase() || 'U'}
               </div>
-              <span className="text-sm font-medium">
+              <span className="text-sm font-medium text-gray-700">
                 {user?.name || 'User'}
               </span>
             </button>
             {showProfileMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200">
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
                 <NavLink
                   to="/profile"
-                  className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                   onClick={() => setShowProfileMenu(false)}
                 >
                   <User className="w-4 h-4" />
@@ -145,8 +145,11 @@ const Layout = () => {
                 </NavLink>
                 <div className="border-t border-gray-100">
                   <button
-                    onClick={handleLogout}
-                    className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left flex items-center gap-2"
+                    onClick={() => {
+                      handleLogout();
+                      setShowProfileMenu(false);
+                    }}
+                    className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left flex items-center gap-2"
                   >
                     <LogOut className="w-4 h-4" />
                     <span>Sign out</span>

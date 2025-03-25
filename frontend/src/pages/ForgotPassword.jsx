@@ -20,32 +20,28 @@ const ForgotPassword = () => {
     try {
       const response = await fetch(`${API_ENDPOINTS.LOGIN}/forgot-password`, {
         method: 'POST',
-        headers: {
-          ...API_CONFIG.headers,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email }),
-        mode: 'cors',
-        credentials: 'include'
+        ...API_CONFIG,
+        body: JSON.stringify({ email })
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to process request');
+        throw new Error(data.message || 'Failed to send reset instructions');
       }
 
-      const data = await response.json();
       setIsEmailSent(true);
       toast({
         title: "Success!",
-        description: "If an account exists with this email, you will receive password reset instructions.",
+        description: "Password reset instructions have been sent to your email.",
       });
+      
     } catch (error) {
       console.error('Forgot password error:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message || "Failed to process request",
+        description: error.message || "Failed to send reset instructions",
       });
     } finally {
       setIsLoading(false);

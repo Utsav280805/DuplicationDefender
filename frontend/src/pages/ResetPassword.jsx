@@ -59,14 +59,20 @@ const ResetPassword = () => {
         throw new Error(data.message || 'Failed to reset password');
       }
 
+      // Store the new auth token and user data
+      if (data.token && data.user) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+
       toast({
         title: "Success!",
-        description: "Your password has been reset successfully. Please sign in with your new password.",
+        description: "Your password has been reset successfully. Redirecting to dashboard...",
       });
 
-      // Redirect to sign in page after successful password reset
+      // Redirect to dashboard since we're already authenticated
       setTimeout(() => {
-        navigate('/signin');
+        navigate('/dashboard');
       }, 2000);
     } catch (error) {
       console.error('Reset password error:', error);

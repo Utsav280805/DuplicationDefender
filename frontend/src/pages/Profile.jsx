@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from '../components/ui/use-toast';
+import { API_ENDPOINTS, API_CONFIG } from '../config/api';
 
 const Profile = () => {
   const [user, setUser] = useState(null);
@@ -20,8 +21,10 @@ const Profile = () => {
           return;
         }
 
-        const response = await fetch('http://localhost:5000/api/auth/me', {
+        const response = await fetch(`${API_ENDPOINTS.LOGIN}/me`, {
+          ...API_CONFIG,
           headers: {
+            ...API_CONFIG.headers,
             'Authorization': `Bearer ${token}`
           }
         });
@@ -30,21 +33,31 @@ const Profile = () => {
           throw new Error('Failed to fetch user data');
         }
 
-        const userData = await response.json();
-        setUser(userData.user);
-        localStorage.setItem('user', JSON.stringify(userData.user));
+        const data = await response.json();
+        if (data.success && data.user) {
+          setUser(data.user);
+          localStorage.setItem('user', JSON.stringify(data.user));
+        } else {
+          throw new Error(data.message || 'Failed to fetch user data');
+        }
       } catch (error) {
         console.error('Error fetching user data:', error);
+        // Try to get user data from localStorage as fallback
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          try {
+            const userData = JSON.parse(storedUser);
+            setUser(userData);
+          } catch (e) {
+            console.error('Error parsing stored user data:', e);
+          }
+        }
+        
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Failed to load profile data",
+          description: "Failed to refresh profile data. Showing cached data.",
         });
-        // Fallback to localStorage data
-        const userData = localStorage.getItem('user');
-        if (userData) {
-          setUser(JSON.parse(userData));
-        }
       } finally {
         setIsLoading(false);
       }

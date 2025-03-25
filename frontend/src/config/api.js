@@ -18,7 +18,7 @@ export const API_CONFIG = {
     Accept: 'application/json',
   },
   mode: 'cors',
-  credentials: 'include',
+  credentials: 'same-origin',
 };
 
 // Get auth headers with token

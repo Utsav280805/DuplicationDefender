@@ -80,34 +80,65 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find user
-    const user = await User.findOne({ email });
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email }).select('+password');
     if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
     }
 
     // Check if email is verified
     if (!user.isEmailVerified) {
-      return res.status(401).json({ success: false, message: 'Please verify your email before logging in' });
+      return res.status(401).json({
+        success: false,
+        message: 'Please verify your email before logging in'
+      });
     }
 
-    // Check password
-    if (!(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    // Verify password using the model's method
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
     }
+
+    // Update last login time
+    user.lastLogin = new Date();
+    await user.save();
 
     // Generate JWT token
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
+    // Return success response
     res.status(200).json({
       success: true,
       message: 'Login successful',
       token,
-      user: { id: user._id, name: user.name, email: user.email, isEmailVerified: user.isEmailVerified }
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        isEmailVerified: user.isEmailVerified
+      }
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ success: false, message: 'Error logging in' });
+    res.status(500).json({
+      success: false,
+      message: 'Error during login'
+    });
   }
 };
 
@@ -235,16 +266,25 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    // Hash new password and save
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
+    // Update password and clear reset token
+    user.password = newPassword; // This will be hashed by the pre-save middleware
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
     await user.save();
 
+    // Generate new auth token
+    const authToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '24h' });
+
     res.status(200).json({
       success: true,
-      message: 'Password reset successful'
+      message: 'Password reset successful',
+      token: authToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        isEmailVerified: user.isEmailVerified
+      }
     });
   } catch (error) {
     console.error('Reset password error:', error);

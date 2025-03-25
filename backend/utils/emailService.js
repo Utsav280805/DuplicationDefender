@@ -8,18 +8,34 @@ const transporter = nodemailer.createTransport({
     auth: {
         user: 'ariwalajay212530@gmail.com',
         pass: process.env.EMAIL_PASSWORD
-    }
+    },
+    // Add these options for better reliability
+    pool: true, // Use pooled connections
+    maxConnections: 1, // Limit concurrent connections
+    maxMessages: Infinity,
+    rateDelta: 1000, // Limit to 1 message per second
+    rateLimit: 1
 });
 
 // Verify transporter configuration
 transporter.verify(function(error, success) {
     if (error) {
         console.error('SMTP connection error:', error);
-        
     } else {
         console.log('SMTP server is ready to send emails');
     }
 });
+
+// Helper function to retry failed operations
+const retry = async (fn, retries = 3, delay = 1000) => {
+    try {
+        return await fn();
+    } catch (error) {
+        if (retries === 0) throw error;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return retry(fn, retries - 1, delay * 2);
+    }
+};
 
 // Function to send verification email
 const sendVerificationEmail = async (email, verificationUrl) => {
@@ -44,7 +60,9 @@ const sendVerificationEmail = async (email, verificationUrl) => {
     };
 
     try {
-        await transporter.sendMail(mailOptions);
+        // Use retry mechanism for sending emails
+        await retry(() => transporter.sendMail(mailOptions));
+        console.log('Verification email sent successfully to:', email);
         return true;
     } catch (error) {
         console.error('Error sending verification email:', error);

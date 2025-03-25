@@ -14,6 +14,10 @@ import SignIn from './pages/SignIn';
 import SignUp from './pages/SignUp';
 import Landing from './pages/Landing';
 import PrivateRoute from './components/PrivateRoute';
+import VerifyEmail from './pages/VerifyEmail';
+import PrivateRoute from './components/PrivateRoute';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 const queryClient = new QueryClient();
 
@@ -30,6 +34,9 @@ const App = () => {
           <Route path="/signup" element={
             localStorage.getItem('token') ? <Navigate to="/dashboard" /> : <SignUp />
           } />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           
           {/* Protected Routes - Require Authentication */}
           <Route element={<PrivateRoute><Layout /></PrivateRoute>}>

@@ -1,5 +1,6 @@
 const crypto = require('crypto');
-const File = require('../models/File');
+const path = require('path');
+const File = require(path.join(__dirname, '../src/models/File'));
 
 /**
  * Generate a hash from file content for duplicate checking
@@ -13,40 +14,30 @@ exports.generateFileHash = (fileContent) => {
 };
 
 /**
- * Check if a file with the same hash already exists
- * @param {String} fileHash - Hash of the file to check
- * @param {Number} fileSize - Size of the file to check
- * @returns {Promise<Array>} - Array of duplicate files found
+ * Check for duplicate files based on hash and size
+ * @param {string} fileHash - SHA-256 hash of the file content
+ * @param {number} fileSize - Size of the file in bytes
+ * @returns {Promise<{exact: Array<any>, similar: Array<any>}>} Object containing exact and similar duplicates
  */
 exports.checkDuplicate = async (fileHash, fileSize) => {
   try {
-    // First check for exact matches using hash
-    const exactDuplicates = await File.find({ fileHash })
-      .populate('uploadedBy', 'username')
-      .lean();
-    
-    if (exactDuplicates.length > 0) {
-      return { 
-        exact: exactDuplicates,
-        similar: [] 
-      };
-    }
+    // Find exact duplicates by hash
+    const exactDuplicates = await File.find({ hash: fileHash, isDeleted: false });
 
-    // If no exact duplicates, check for similar files by size
-    // Files within 5% size difference might be similar
-    const lowerBound = fileSize * 0.95;
-    const upperBound = fileSize * 1.05;
-    
+    // Find similar files by size (within 10% difference)
+    const sizeThreshold = fileSize * 0.1;
     const similarFiles = await File.find({
-      fileHash: { $ne: fileHash },
-      fileSize: { $gte: lowerBound, $lte: upperBound }
-    })
-    .populate('uploadedBy', 'username')
-    .lean();
-    
-    return { 
-      exact: [],
-      similar: similarFiles 
+      size: {
+        $gte: fileSize - sizeThreshold,
+        $lte: fileSize + sizeThreshold
+      },
+      hash: { $ne: fileHash },
+      isDeleted: false
+    });
+
+    return {
+      exact: exactDuplicates,
+      similar: similarFiles
     };
   } catch (error) {
     console.error('Error checking for duplicates:', error);

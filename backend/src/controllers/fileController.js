@@ -162,11 +162,14 @@ exports.downloadFile = async (req, res) => {
 exports.checkForDuplicates = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: 'No file provided for check' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'No file provided for check' 
+      });
     }
 
     const { size, path: filePath } = req.file;
-    const fileContent = fs.readFileSync(filePath);
+    const fileContent = await fs.readFile(filePath);
     const fileHash = generateFileHash(fileContent);
     
     // Check for exact duplicates and similar files
@@ -183,20 +186,34 @@ exports.checkForDuplicates = async (req, res) => {
     }
     
     // Find files with similar metadata
-    const similarByMetadata = await findSimilarFiles(metadata);
+    const similarByMetadata = await findSimilarFiles(metadata) || [];
     
     // Remove the temporary file after check
-    fs.unlinkSync(filePath);
+    await fs.unlink(filePath);
     
     res.json({
-      exactDuplicates: duplicateCheck.exact,
-      similarBySize: duplicateCheck.similar,
-      similarByMetadata: similarByMetadata
+      success: true,
+      data: {
+        exactDuplicates: duplicateCheck.exact,
+        similarBySize: duplicateCheck.similar,
+        similarByMetadata: similarByMetadata
+      }
     });
     
   } catch (error) {
     console.error('Error checking for duplicates:', error);
-    res.status(500).json({ message: 'Server error checking for duplicates' });
+    // Clean up the temporary file if it exists
+    if (req.file && req.file.path) {
+      try {
+        await fs.unlink(req.file.path);
+      } catch (unlinkError) {
+        console.error('Error deleting temporary file:', unlinkError);
+      }
+    }
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error checking for duplicates' 
+    });
   }
 };
 

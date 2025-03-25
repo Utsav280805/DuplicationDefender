@@ -6,13 +6,14 @@ import { login } from '../services/authService';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 
 const SignIn = () => {
   const [formData, setFormData] = useState({ email: '', password: '', rememberMe: false });
   const [isLoading, setIsLoading] = useState(false);
   const [serverStatus, setServerStatus] = useState(true);
   const [showVerificationMessage, setShowVerificationMessage] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -83,7 +84,24 @@ const SignIn = () => {
 
           <div>
             <Label htmlFor="password">Password</Label>
-            <Input id="password" name="password" type="password" autoComplete="current-password" required value={formData.password} onChange={handleChange} />
+            <div className="relative">
+              <Input
+                id="password"
+                name="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                required
+                value={formData.password}
+                onChange={handleChange}
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center justify-between">

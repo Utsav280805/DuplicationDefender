@@ -15,7 +15,6 @@ import SignUp from './pages/SignUp';
 import Landing from './pages/Landing';
 import PrivateRoute from './components/PrivateRoute';
 import VerifyEmail from './pages/VerifyEmail';
-import PrivateRoute from './components/PrivateRoute';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 

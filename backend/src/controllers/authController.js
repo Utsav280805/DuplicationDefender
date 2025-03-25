@@ -153,11 +153,14 @@ exports.resendVerificationEmail = async (req, res) => {
     }
 
     // Generate new verification token
-    user.emailVerificationToken = crypto.randomBytes(32).toString('hex');
-    user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    user.emailVerificationToken = verificationToken;
+    user.emailVerificationExpires = verificationExpires;
     await user.save();
 
-    if (!(await emailService.sendVerificationEmail(email, user.emailVerificationToken))) {
+    if (!(await emailService.sendVerificationEmail(email, verificationToken))) {
       return res.status(500).json({ success: false, message: 'Error sending verification email' });
     }
 
@@ -165,5 +168,89 @@ exports.resendVerificationEmail = async (req, res) => {
   } catch (error) {
     console.error('Resend verification email error:', error);
     res.status(500).json({ success: false, message: 'Error resending verification email' });
+  }
+};
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    // Find user by email
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = new Date(Date.now() + 1 * 60 * 60 * 1000); // Create Date object for 1 hour from now
+
+    // Save reset token and expiry to user
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = resetExpires;
+    await user.save();
+
+    // Send password reset email
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+    await emailService.sendPasswordResetEmail(email, resetLink);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset instructions sent to your email'
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing forgot password request'
+    });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    // Validate input
+    if (!token || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token and new password are required'
+      });
+    }
+
+    // Find user with valid reset token
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset token'
+      });
+    }
+
+    // Hash new password and save
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset successful'
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error resetting password'
+    });
   }
 };

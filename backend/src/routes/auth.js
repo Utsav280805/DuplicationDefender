@@ -1,17 +1,16 @@
 const express = require('express');
+const router = express.Router();
 const { 
   register, 
   login, 
   getMe, 
   changePassword, 
   verifyEmail, 
-  resendVerificationEmail, 
-  forgotPassword, 
-  resetPassword 
+  resendVerificationEmail,
+  forgotPassword,
+  resetPassword
 } = require('../controllers/authController');
 const { auth } = require('../middleware/auth');
-
-const router = express.Router();
 
 // Public routes
 router.post('/register', register);
@@ -21,12 +20,8 @@ router.post('/resend-verification', resendVerificationEmail);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 
-// Protected routes
+// Protected routes (require authentication)
 router.get('/me', auth, getMe);
-
-// @route   POST /api/auth/change-password
-// @desc    Change user password
-// @access  Private
 router.post('/change-password', auth, changePassword);
 
 module.exports = router;

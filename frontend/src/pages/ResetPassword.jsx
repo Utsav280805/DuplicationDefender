@@ -5,7 +5,7 @@ import { useToast } from '../components/ui/use-toast';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 
 const ResetPassword = () => {
   const [searchParams] = useSearchParams();
@@ -18,6 +18,8 @@ const ResetPassword = () => {
     confirmPassword: ''
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -47,7 +49,7 @@ const ResetPassword = () => {
         ...API_CONFIG,
         body: JSON.stringify({
           token,
-          password: formData.password
+          newPassword: formData.password
         })
       });
 
@@ -57,14 +59,20 @@ const ResetPassword = () => {
         throw new Error(data.message || 'Failed to reset password');
       }
 
+      // Store the new auth token and user data
+      if (data.token && data.user) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+
       toast({
         title: "Success!",
-        description: "Your password has been reset successfully. Please sign in with your new password.",
+        description: "Your password has been reset successfully. Redirecting to dashboard...",
       });
 
-      // Redirect to sign in page after successful password reset
+      // Redirect to dashboard since we're already authenticated
       setTimeout(() => {
-        navigate('/signin');
+        navigate('/dashboard');
       }, 2000);
     } catch (error) {
       console.error('Reset password error:', error);
@@ -123,30 +131,48 @@ const ResetPassword = () => {
           <div className="space-y-4">
             <div>
               <Label htmlFor="password">New Password</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                required
-                value={formData.password}
-                onChange={handleChange}
-                className="mt-1"
-                minLength={6}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={formData.password}
+                  onChange={handleChange}
+                  className="mt-1"
+                  minLength={6}
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
             </div>
 
             <div>
               <Label htmlFor="confirmPassword">Confirm New Password</Label>
-              <Input
-                id="confirmPassword"
-                name="confirmPassword"
-                type="password"
-                required
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                className="mt-1"
-                minLength={6}
-              />
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  className="mt-1"
+                  minLength={6}
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
             </div>
           </div>
 

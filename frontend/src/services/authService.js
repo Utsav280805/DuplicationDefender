@@ -2,21 +2,10 @@ import { API_ENDPOINTS, API_CONFIG, handleApiError } from '../config/api';
 
 const API_URL = 'http://localhost:5000/api';
 
-// Hardcoded users for demo
-let DEMO_USERS = [
-  {
-    id: 1,
-    email: '23it007@charusat.edu.in',
-    password: '********', // Using the password you entered
-    name: '23IT007' // Changed from Demo User to match student ID
-  }
-];
-
 export const signup = async (name, email, password) => {
   try {
     const response = await fetch(`${API_ENDPOINTS.LOGIN}/register`, {
       method: 'POST',
-      headers: API_CONFIG.headers,
       ...API_CONFIG,
       body: JSON.stringify({ name, email, password })
     });
@@ -27,14 +16,18 @@ export const signup = async (name, email, password) => {
       throw new Error(data.message || 'Failed to create account');
     }
 
-    // Store auth data
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('user', JSON.stringify(data.user));
-    
+    // Don't store auth data immediately since email needs verification
+    // Instead, show verification message
+    if (data.success) {
+      return {
+        success: true,
+        message: 'Please check your email to verify your account'
+      };
+    }
+
     return data;
   } catch (error) {
     console.error('Signup error:', error);
-    throw new Error(error.message || 'Failed to sign up');
     throw error;
   }
 };
@@ -43,7 +36,6 @@ export const login = async (email, password) => {
   try {
     const response = await fetch(`${API_ENDPOINTS.LOGIN}/login`, {
       method: 'POST',
-      headers: API_CONFIG.headers,
       ...API_CONFIG,
       body: JSON.stringify({ email, password })
     });
@@ -51,16 +43,12 @@ export const login = async (email, password) => {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.message || 'Invalid credentials');
       // Check specifically for email verification error
       if (data.message === 'Please verify your email before logging in') {
         throw new Error('Please check your email for verification link before logging in');
       }
-      // Check for specific error messages from the server
-      if (data.message) {
-        throw new Error(data.message);
-      }
-      throw new Error('Invalid credentials. Please check your email and password.');
+      // Use server's error message if available, otherwise use default
+      throw new Error(data.message || 'Invalid credentials. Please check your email and password.');
     }
 
     // Store auth data
@@ -70,8 +58,7 @@ export const login = async (email, password) => {
     return data;
   } catch (error) {
     console.error('Login error:', error);
-    throw new Error(error.message || 'Failed to sign in');
-    throw error;
+    throw error; // Re-throw the error to be handled by the component
   }
 };
 

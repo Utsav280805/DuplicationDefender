@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, Navigate, useNavigate } from 'react-router-dom';
-import { FileText, Home, Database, Search, Settings, Upload, LogOut, Bell, User } from 'lucide-react';
+import { FileText, Home, Database, Search, Settings, Upload, LogOut, Bell, User, AlertTriangle, CheckCircle, Info } from 'lucide-react';
 import { toast } from './ui/use-toast';
 
 const Layout = () => {
@@ -10,9 +10,30 @@ const Layout = () => {
   const navigate = useNavigate();
 
   const notifications = [
-    { id: 1, message: 'New duplicate found in dataset', time: '2 minutes ago' },
-    { id: 2, message: 'Dataset upload completed', time: '1 hour ago' },
-    { id: 3, message: 'System update available', time: '2 hours ago' },
+    { 
+      id: 1, 
+      message: 'New duplicate found in dataset', 
+      time: '2 minutes ago',
+      type: 'warning',
+      icon: AlertTriangle,
+      color: 'text-yellow-500'
+    },
+    { 
+      id: 2, 
+      message: 'Dataset upload completed', 
+      time: '1 hour ago',
+      type: 'success',
+      icon: CheckCircle,
+      color: 'text-green-500'
+    },
+    { 
+      id: 3, 
+      message: 'System update available', 
+      time: '2 hours ago',
+      type: 'info',
+      icon: Info,
+      color: 'text-blue-500'
+    },
   ];
 
   useEffect(() => {
@@ -34,12 +55,12 @@ const Layout = () => {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    navigate('/signin');
     toast({
       title: "Success",
       description: "Logged out successfully",
       duration: 3000,
     });
-    navigate('/signin');
   };
 
   const navItems = [
@@ -50,6 +71,18 @@ const Layout = () => {
     { icon: <FileText className="w-5 h-5" />, label: 'Records', path: '/records' },
     { icon: <Settings className="w-5 h-5" />, label: 'Settings', path: '/settings' },
   ];
+
+  // Close notifications when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showNotifications && !event.target.closest('.notifications-container')) {
+        setShowNotifications(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showNotifications]);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -99,24 +132,49 @@ const Layout = () => {
             >
               <Bell className="w-5 h-5 text-gray-600" />
               {notifications.length > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-[11px] text-white flex items-center justify-center font-medium">
+                  {notifications.length}
+                </span>
               )}
             </button>
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 py-2">
-                <div className="px-4 py-2 border-b border-gray-100">
-                  <h3 className="font-semibold">Notifications</h3>
+              <div className="notifications-container absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+                <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 rounded-t-lg flex justify-between items-center">
+                  <h3 className="font-semibold text-lg">Notifications</h3>
+                  <span className="text-sm text-gray-500">{notifications.length} new</span>
                 </div>
-                <div className="max-h-[300px] overflow-y-auto">
-                  {notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
-                    >
-                      <p className="text-sm text-gray-800">{notification.message}</p>
-                      <p className="text-xs text-gray-500 mt-1">{notification.time}</p>
+                <div className="max-h-[400px] overflow-y-auto">
+                  {notifications.length > 0 ? (
+                    notifications.map((notification) => {
+                      const Icon = notification.icon;
+                      return (
+                        <div
+                          key={notification.id}
+                          className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 transition-colors flex items-start gap-3"
+                        >
+                          <div className={`mt-1 ${notification.color}`}>
+                            <Icon className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">{notification.message}</p>
+                            <p className="text-xs text-gray-500 mt-1">{notification.time}</p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="px-4 py-6 text-center text-gray-500">
+                      No new notifications
                     </div>
-                  ))}
+                  )}
+                </div>
+                <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+                  <button 
+                    onClick={() => setShowNotifications(false)}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium w-full text-center"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             )}

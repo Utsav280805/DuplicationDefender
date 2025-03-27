@@ -71,14 +71,19 @@ const SignUp = () => {
     setShowExistingAccountMessage(false);
     
     try {
-      await signup(formData.name, formData.email, formData.password);
+      const response = await signup(formData.name, formData.email, formData.password);
       
       toast({
         title: "Success!",
-        description: "Account created successfully. Please check your email to verify your account.",
+        description: "Account created successfully. You can now sign in.",
       });
 
-      navigate('/signin');
+      // Redirect to dashboard if we have a token
+      if (response.token) {
+        navigate('/dashboard');
+      } else {
+        navigate('/signin');
+      }
     } catch (error) {
       console.error('Signup error:', error);
       

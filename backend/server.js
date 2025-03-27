@@ -4,35 +4,99 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs').promises;
 
 // Import routes
-const authRoutes = require('./src/routes/auth');
-const recordRoutes = require('./src/routes/records');
-const userRoutes = require('./src/routes/user');
+const authRoutes = require('./src/routes/authRoutes');
+const fileRoutes = require('./src/routes/fileRoutes');
 
 const app = express();
 const port = process.env.PORT || 5000;
 
+// Create required directories if they don't exist
+const createRequiredDirectories = async () => {
+  const dirs = [
+    path.join(__dirname, 'logs'),
+    path.join(__dirname, 'uploads'),
+    path.join(__dirname, 'uploads', 'temp')
+  ];
+
+  for (const dir of dirs) {
+    try {
+      await fs.access(dir);
+      console.log(`Directory exists: ${dir}`);
+    } catch {
+      console.log(`Creating directory: ${dir}`);
+      try {
+        await fs.mkdir(dir, { recursive: true });
+        console.log(`Directory created: ${dir}`);
+      } catch (err) {
+        console.error(`Failed to create directory: ${dir}`, err);
+        throw err;
+      }
+    }
+  }
+};
+
+// Initialize directories
+createRequiredDirectories().catch(err => {
+  console.error('Failed to create required directories:', err);
+  process.exit(1);
+});
+
 // Middleware
+app.use(morgan('dev')); // Logging
 app.use(cors({
-  origin: ['http://localhost:8081', 'http://127.0.0.1:8081'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: 'http://localhost:3001', // Frontend URL
   credentials: true
 }));
 app.use(express.json());
-app.use(morgan('dev'));
-
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/records', recordRoutes);
-app.use('/api/user', userRoutes);
+app.use(express.urlencoded({ extended: true }));
 
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Health check route
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/files', fileRoutes);
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({
+    success: false,
+    message: 'Something went wrong!',
+    error: err.message
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ 
+    success: false,
+    message: `Route ${req.originalUrl} not found` 
+  });
+});
+
+// MongoDB Connection
+const connectDB = async (retries = 3) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await mongoose.connect('mongodb://localhost:27017/duplication-defender', {
+        useNewUrlParser: true,
+        useUnifiedTopology: true
+      });
+      console.log('Connected to MongoDB');
+      return;
+    } catch (err) {
+      console.error(`MongoDB connection attempt ${i + 1} failed:`, err);
+      if (i === retries - 1) throw err;
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retrying
+    }
+  }
+};
+
+// Health check endpoint
 app.get('/api/health', (req, res) => {
   const isDbConnected = mongoose.connection.readyState === 1;
   res.json({ 
@@ -43,51 +107,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    message: 'Something went wrong!'
-  });
-});
-
-// Handle 404 routes
-app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
-});
-
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('MongoDB connected successfully'))
-  .catch(err => console.error('MongoDB connection error:', err));
-
 // Start server
 const startServer = async () => {
   try {
-    const server = app.listen(port, () => {
+    await connectDB();
+    app.listen(port, () => {
       console.log(`Server is running on port ${port}`);
     });
-
-    // Graceful shutdown
-    process.on('SIGTERM', () => {
-      console.log('SIGTERM signal received');
-      server.close(() => {
-        console.log('Server closed');
-        mongoose.connection.close(false, () => {
-          console.log('MongoDB connection closed');
-          process.exit(0);
-        });
-      });
-    });
-  } catch (error) {
-    console.error('Server startup error:', error);
+  } catch (err) {
+    console.error('Failed to start server:', err);
     process.exit(1);
   }
 };

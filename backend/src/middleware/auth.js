@@ -1,3 +1,4 @@
+// @ts-nocheck
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
@@ -21,39 +22,52 @@ const User = require('../models/User');
  */
 const auth = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    // Get token from Authorization header or cookie
+    const token = req.header('Authorization')?.replace('Bearer ', '') || 
+                 req.cookies?.token;
     
     if (!token) {
+      console.log('No authentication token provided');
       return res.status(401).json({
         success: false,
         message: 'Authentication required'
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('Verifying token...');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
     if (!decoded || typeof decoded !== 'object') {
       throw new Error('Invalid token');
     }
 
-    const user = await User.findOne({ _id: decoded._id });
+    // Look for userId in decoded token
+    const userId = decoded.userId || decoded._id;
+    if (!userId) {
+      throw new Error('Invalid token format');
+    }
+
+    console.log('Finding user with ID:', userId);
+    const user = await User.findById(userId);
 
     if (!user) {
+      console.log('User not found with ID:', userId);
       return res.status(401).json({
         success: false,
         message: 'User not found'
       });
     }
 
+    console.log('User authenticated:', user._id);
     req.token = token;
     req.user = user;
     next();
   } catch (error) {
-    console.error('Auth error:', error);
+    console.error('Authentication error:', error.message);
     res.status(401).json({
       success: false,
-      message: 'Authentication failed'
+      message: 'Invalid authentication token'
     });
   }
 };
 
-module.exports = { auth }; 
+module.exports = { auth };

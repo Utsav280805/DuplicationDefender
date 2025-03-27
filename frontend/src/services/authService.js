@@ -1,28 +1,30 @@
 import { API_ENDPOINTS, API_CONFIG, handleApiError } from '../config/api';
 
-const API_URL = 'http://localhost:5000/api';
-
 export const signup = async (name, email, password) => {
   try {
-    const response = await fetch(`${API_ENDPOINTS.LOGIN}/register`, {
+    console.log('Attempting signup with:', { name, email });
+    const response = await fetch(API_ENDPOINTS.SIGN_UP, {
       method: 'POST',
-      ...API_CONFIG,
-      body: JSON.stringify({ name, email, password })
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ name, email, password }),
+      credentials: 'include'  // Added this to handle cookies
     });
 
     const data = await response.json();
+    console.log('Signup response:', data);
     
     if (!response.ok) {
       throw new Error(data.message || 'Failed to create account');
     }
 
-    // Don't store auth data immediately since email needs verification
-    // Instead, show verification message
-    if (data.success) {
-      return {
-        success: true,
-        message: 'Please check your email to verify your account'
-      };
+    // Store the token and user data
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      console.log('Stored auth token and user data');
     }
 
     return data;
@@ -34,55 +36,63 @@ export const signup = async (name, email, password) => {
 
 export const login = async (email, password) => {
   try {
-    const response = await fetch(`${API_ENDPOINTS.LOGIN}/login`, {
+    console.log('Attempting login with email:', email);
+    const response = await fetch(API_ENDPOINTS.SIGN_IN, {
       method: 'POST',
-      ...API_CONFIG,
-      body: JSON.stringify({ email, password })
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ email, password }),
+      credentials: 'include'
     });
 
     const data = await response.json();
+    console.log('Login response:', data);
     
     if (!response.ok) {
-      // Check specifically for email verification error
-      if (data.message === 'Please verify your email before logging in') {
-        throw new Error('Please check your email for verification link before logging in');
-      }
-      // Use server's error message if available, otherwise use default
-      throw new Error(data.message || 'Invalid credentials. Please check your email and password.');
+      throw new Error(data.message || 'Invalid credentials');
     }
 
-    // Store auth data
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('user', JSON.stringify(data.user));
-    
+    // Store the token and user data
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      console.log('Stored auth token and user data');
+    }
+
     return data;
   } catch (error) {
     console.error('Login error:', error);
-    throw error; // Re-throw the error to be handled by the component
+    throw error;
   }
 };
 
 export const logout = () => {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
+  console.log('Cleared auth token and user data');
 };
 
 export const isAuthenticated = () => {
   const token = localStorage.getItem('token');
-  if (!token) return false;
-  
+  if (!token) {
+    console.log('No auth token found');
+    return false;
+  }
+
   try {
-    // Verify token expiration
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    if (payload.exp < Date.now() / 1000) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+    // Check if user data exists
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (!user) {
+      console.log('No user data found');
       return false;
     }
+
+    console.log('User is authenticated');
     return true;
-  } catch {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  } catch (error) {
+    console.error('Error checking authentication:', error);
     return false;
   }
 };
@@ -92,16 +102,24 @@ export const getToken = () => {
 };
 
 export const getUser = () => {
-  const user = localStorage.getItem('user');
-  return user ? JSON.parse(user) : null;
+  try {
+    return JSON.parse(localStorage.getItem('user'));
+  } catch (error) {
+    console.error('Error getting user data:', error);
+    return null;
+  }
 };
 
 export const resendVerificationEmail = async (email) => {
   try {
-    const response = await fetch(`${API_ENDPOINTS.LOGIN}/resend-verification`, {
+    const response = await fetch(API_ENDPOINTS.RESEND_VERIFICATION, {
       method: 'POST',
-      ...API_CONFIG,
-      body: JSON.stringify({ email })
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ email }),
+      credentials: 'include'
     });
 
     const data = await response.json();
@@ -112,7 +130,7 @@ export const resendVerificationEmail = async (email) => {
 
     return data;
   } catch (error) {
-    console.error('Resend verification email error:', error);
+    console.error('Error resending verification:', error);
     throw error;
   }
-}; 
+};

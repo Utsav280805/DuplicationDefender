@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from '../components/ui/use-toast';
+import { datasetService } from '../services/datasetService';
+import { formatFileSize, formatDate } from '../utils/formatters';
 
 const DataRepository = () => {
   const [datasets, setDatasets] = useState([]);
@@ -14,244 +16,247 @@ const DataRepository = () => {
 
   // Fetch datasets from backend
   useEffect(() => {
-    // Mock data for immediate testing
-    const mockData = [
-      {
-        id: 1,
-        name: 'Employee Records 2024',
-        description: 'Annual employee data compilation',
-        department: 'research',
-        fileType: 'xlsx',
-        size: 1024 * 1024 * 2.5, // 2.5MB
-        uploadedAt: '2024-03-01',
-        previewUrl: '#'
-      },
-      {
-        id: 2,
-        name: 'Customer Database',
-        description: 'Complete customer information',
-        department: 'administrative',
-        fileType: 'csv',
-        size: 1024 * 1024 * 1.8, // 1.8MB
-        uploadedAt: '2024-03-10',
-        previewUrl: '#'
-      },
-      {
-        id: 3,
-        name: 'Research Findings Q1',
-        description: 'Quarterly research results',
-        department: 'research',
-        fileType: 'pdf',
-        size: 1024 * 1024 * 3.2, // 3.2MB
-        uploadedAt: '2024-03-15',
-        previewUrl: '#'
+    const fetchDatasets = async () => {
+      try {
+        setIsLoading(true);
+        const response = await datasetService.getDatasets();
+        if (response.success) {
+          setDatasets(response.files);
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to fetch datasets"
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching datasets:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: error.message || "Failed to fetch datasets"
+        });
+      } finally {
+        setIsLoading(false);
       }
-    ];
-    setDatasets(mockData);
-    setIsLoading(false);
+    };
+
+    fetchDatasets();
   }, []);
 
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+  // Filter datasets based on search query and filters
+  const filteredDatasets = datasets.filter(dataset => {
+    // Search query filter
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = dataset.name.toLowerCase().includes(searchLower) ||
+                         dataset.description.toLowerCase().includes(searchLower);
 
-  const handleDownload = async (datasetId) => {
-    try {
-      // First check for duplicates
-      const checkResponse = await fetch(`http://localhost:5000/api/datasets/${datasetId}/check-duplicate`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      
-      const checkResult = await checkResponse.json();
-      
-      if (checkResult.isDuplicate) {
-        // Show duplicate alert with existing location
-        toast({
-          title: "Duplicate Alert",
-          description: `This dataset already exists at: ${checkResult.location}`,
-          action: (
-            <button 
-              className="bg-blue-500 text-white px-3 py-1 rounded"
-              onClick={() => window.open(checkResult.location)}
-            >
-              Open Location
-            </button>
-          ),
-          duration: 5000,
-        });
-        return;
+    // Department filter
+    const matchesDepartment = !filters.department || dataset.department === filters.department;
+
+    // File type filter
+    const matchesFileType = !filters.fileType || dataset.fileType === filters.fileType;
+
+    // Date range filter
+    let matchesDateRange = true;
+    if (filters.dateRange !== 'all') {
+      const uploadDate = new Date(dataset.uploadedAt);
+      const now = new Date();
+      const daysDiff = (now - uploadDate) / (1000 * 60 * 60 * 24);
+
+      switch (filters.dateRange) {
+        case 'today':
+          matchesDateRange = daysDiff < 1;
+          break;
+        case 'week':
+          matchesDateRange = daysDiff < 7;
+          break;
+        case 'month':
+          matchesDateRange = daysDiff < 30;
+          break;
+        default:
+          matchesDateRange = true;
       }
+    }
 
-      // Proceed with download if not duplicate
-      const downloadResponse = await fetch(`http://localhost:5000/api/datasets/${datasetId}/download`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+    // Size filter
+    let matchesSize = true;
+    if (filters.size !== 'all') {
+      const fileSizeMB = dataset.size / (1024 * 1024);
+      switch (filters.size) {
+        case 'small':
+          matchesSize = fileSizeMB < 1;
+          break;
+        case 'medium':
+          matchesSize = fileSizeMB >= 1 && fileSizeMB < 10;
+          break;
+        case 'large':
+          matchesSize = fileSizeMB >= 10;
+          break;
+        default:
+          matchesSize = true;
+      }
+    }
+
+    return matchesSearch && matchesDepartment && matchesFileType && matchesDateRange && matchesSize;
+  });
+
+  const handleDownload = async (id) => {
+    try {
+      await datasetService.downloadDataset(id);
+      toast({
+        title: "Success",
+        description: "File download started"
       });
-
-      // Handle file download
-      const blob = await downloadResponse.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = checkResult.filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
     } catch (error) {
+      console.error('Download error:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to process download",
-        duration: 3000,
+        description: error.message || "Failed to download file"
       });
     }
   };
 
-  const filteredDatasets = datasets.filter(dataset => {
-    const matchesSearch = dataset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         dataset.description.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesDepartment = !filters.department || dataset.department === filters.department;
-    const matchesFileType = !filters.fileType || dataset.fileType === filters.fileType;
-    
-    // Date range filtering
-    let matchesDate = true;
-    if (filters.dateRange !== 'all') {
-      const now = new Date();
-      const datasetDate = new Date(dataset.uploadedAt);
-      const daysDiff = (now - datasetDate) / (1000 * 60 * 60 * 24);
-      
-      matchesDate = filters.dateRange === 'week' ? daysDiff <= 7 :
-                    filters.dateRange === 'month' ? daysDiff <= 30 :
-                    filters.dateRange === 'year' ? daysDiff <= 365 : true;
+  const handleDelete = async (id) => {
+    try {
+      await datasetService.deleteDataset(id);
+      setDatasets(datasets.filter(d => d._id !== id));
+      toast({
+        title: "Success",
+        description: "File deleted successfully"
+      });
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to delete file"
+      });
     }
+  };
 
-    return matchesSearch && matchesDepartment && matchesFileType && matchesDate;
-  });
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Data Repository</h1>
-        <p className="mt-2 text-gray-600">Browse and download datasets while avoiding duplicates</p>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="sm:col-span-2">
+        <h1 className="text-3xl font-bold mb-4">Data Repository</h1>
+        
+        {/* Search and Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           <input
             type="text"
             placeholder="Search datasets..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+            className="p-2 border rounded"
           />
+          
+          <select
+            value={filters.department}
+            onChange={(e) => setFilters({ ...filters, department: e.target.value })}
+            className="p-2 border rounded"
+          >
+            <option value="">All Departments</option>
+            <option value="finance">Finance</option>
+            <option value="hr">HR</option>
+            <option value="sales">Sales</option>
+            <option value="marketing">Marketing</option>
+          </select>
+          
+          <select
+            value={filters.fileType}
+            onChange={(e) => setFilters({ ...filters, fileType: e.target.value })}
+            className="p-2 border rounded"
+          >
+            <option value="">All File Types</option>
+            <option value="csv">CSV</option>
+            <option value="xlsx">Excel</option>
+            <option value="json">JSON</option>
+          </select>
+          
+          <select
+            value={filters.dateRange}
+            onChange={(e) => setFilters({ ...filters, dateRange: e.target.value })}
+            className="p-2 border rounded"
+          >
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+          </select>
+          
+          <select
+            value={filters.size}
+            onChange={(e) => setFilters({ ...filters, size: e.target.value })}
+            className="p-2 border rounded"
+          >
+            <option value="all">All Sizes</option>
+            <option value="small">&lt; 1MB</option>
+            <option value="medium">1MB - 10MB</option>
+            <option value="large">&gt; 10MB</option>
+          </select>
         </div>
-        
-        <select
-          value={filters.department}
-          onChange={(e) => setFilters(prev => ({ ...prev, department: e.target.value }))}
-          className="px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-        >
-          <option value="">All Departments</option>
-          <option value="research">Research</option>
-          <option value="academic">Academic</option>
-          <option value="administrative">Administrative</option>
-        </select>
-
-        <select
-          value={filters.fileType}
-          onChange={(e) => setFilters(prev => ({ ...prev, fileType: e.target.value }))}
-          className="px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-        >
-          <option value="">All File Types</option>
-          <option value="pdf">PDF</option>
-          <option value="csv">CSV</option>
-          <option value="xlsx">Excel</option>
-          <option value="doc">Word</option>
-        </select>
-
-        <select
-          value={filters.dateRange}
-          onChange={(e) => setFilters(prev => ({ ...prev, dateRange: e.target.value }))}
-          className="px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-        >
-          <option value="all">All Time</option>
-          <option value="week">Last Week</option>
-          <option value="month">Last Month</option>
-          <option value="year">Last Year</option>
-        </select>
       </div>
 
       {/* Dataset Grid */}
-      {isLoading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredDatasets.map(dataset => (
-            <div key={dataset.id} className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      dataset.fileType === 'pdf' ? 'bg-red-100 text-red-600' :
-                      dataset.fileType === 'csv' ? 'bg-green-100 text-green-600' :
-                      dataset.fileType === 'xlsx' ? 'bg-blue-100 text-blue-600' :
-                      'bg-gray-100 text-gray-600'
-                    }`}>
-                      {dataset.fileType.toUpperCase()}
-                    </div>
-                    <div className="ml-3">
-                      <h3 className="text-lg font-medium text-gray-900">{dataset.name}</h3>
-                      <p className="text-sm text-gray-500">{dataset.department}</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <p className="text-gray-600 text-sm mb-4">{dataset.description}</p>
-                
-                <div className="flex items-center justify-between text-sm text-gray-500">
-                  <span>{formatFileSize(dataset.size)}</span>
-                  <span>{new Date(dataset.uploadedAt).toLocaleDateString()}</span>
-                </div>
-
-                <div className="mt-4 flex items-center justify-between">
-                  <button
-                    onClick={() => handleDownload(dataset.id)}
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    Download
-                  </button>
-                  
-                  <button
-                    onClick={() => window.open(dataset.previewUrl)}
-                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                  >
-                    Preview
-                  </button>
-                </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredDatasets.map(dataset => (
+          <div key={dataset._id} className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-xl font-semibold mb-2">{dataset.name}</h3>
+            <p className="text-gray-600 mb-4">{dataset.description}</p>
+            
+            <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
+              <div>
+                <span className="font-semibold">Department:</span>
+                <p className="text-gray-600">{dataset.department}</p>
+              </div>
+              <div>
+                <span className="font-semibold">File Type:</span>
+                <p className="text-gray-600">{dataset.fileType}</p>
+              </div>
+              <div>
+                <span className="font-semibold">Size:</span>
+                <p className="text-gray-600">{formatFileSize(dataset.size)}</p>
+              </div>
+              <div>
+                <span className="font-semibold">Uploaded:</span>
+                <p className="text-gray-600">{formatDate(dataset.createdAt)}</p>
               </div>
             </div>
-          ))}
-        </div>
-      )}
+            
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => handleDownload(dataset._id)}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                Download
+              </button>
+              <button
+                onClick={() => handleDelete(dataset._id)}
+                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {!isLoading && filteredDatasets.length === 0 && (
+      {filteredDatasets.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-gray-500">No datasets found matching your criteria.</p>
+          <p className="text-xl text-gray-600">No datasets found</p>
         </div>
       )}
     </div>
   );
 };
 
-export default DataRepository; 
+export default DataRepository;

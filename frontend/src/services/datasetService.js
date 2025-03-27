@@ -5,16 +5,27 @@ export const datasetService = {
   // Fetch all datasets with optional filters
   async getDatasets(params = {}) {
     try {
+      console.log('Fetching datasets with params:', params);
       const queryParams = new URLSearchParams(params).toString();
-      const response = await fetch(`${API_ENDPOINTS.datasets}?${queryParams}`, {
-        headers: getAuthHeaders(),
+      const url = `${API_ENDPOINTS.GET_FILES}${queryParams ? `?${queryParams}` : ''}`;
+      console.log('Fetching from URL:', url);
+
+      const headers = getAuthHeaders();
+      console.log('Using headers:', headers);
+
+      const response = await fetch(url, {
+        headers: headers,
+        credentials: 'include'
       });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch datasets');
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to fetch datasets');
       }
       
-      return await response.json();
+      const data = await response.json();
+      console.log('Fetch response:', data);
+      return data;
     } catch (error) {
       console.error('Error fetching datasets:', error);
       throw error;
@@ -24,23 +35,31 @@ export const datasetService = {
   // Upload a new dataset
   async uploadDataset(formData) {
     try {
-      const response = await fetch(`${API_ENDPOINTS.datasets}/upload`, {
+      console.log('Uploading dataset...');
+      
+      // Get auth headers but remove Content-Type as FormData will set it
+      const headers = getAuthHeaders();
+      delete headers['Content-Type'];
+      
+      console.log('Upload headers:', headers);
+      
+      const response = await fetch(API_ENDPOINTS.UPLOAD_FILE, {
         method: 'POST',
-        headers: {
-          ...getAuthHeaders(),
-          // Don't set Content-Type here as it will be set automatically for FormData
-        },
+        headers: headers,
         body: formData,
+        credentials: 'include'
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Failed to upload dataset');
+        throw new Error(error.message || 'Upload failed');
       }
 
-      return await response.json();
+      const data = await response.json();
+      console.log('Upload response:', data);
+      return data;
     } catch (error) {
-      console.error('Error uploading dataset:', error);
+      console.error('Upload error:', error);
       throw error;
     }
   },
@@ -48,79 +67,81 @@ export const datasetService = {
   // Get dataset details
   async getDatasetDetails(id) {
     try {
-      const response = await fetch(`${API_ENDPOINTS.datasets}/${id}`, {
+      const response = await fetch(`${API_ENDPOINTS.GET_FILES}/${id}`, {
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch dataset details');
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to get dataset details');
       }
 
       return await response.json();
     } catch (error) {
-      console.error('Error fetching dataset details:', error);
+      console.error('Error getting dataset details:', error);
       throw error;
     }
   },
 
-  // Download dataset
+  // Download a dataset
   async downloadDataset(id) {
     try {
-      const response = await fetch(`${API_ENDPOINTS.datasets}/download/${id}`, {
+      const response = await fetch(`${API_ENDPOINTS.GET_FILES}/${id}/download`, {
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
 
       if (!response.ok) {
-        throw new Error('Failed to download dataset');
+        const error = await response.json();
+        throw new Error(error.message || 'Download failed');
+      }
+
+      // Get the filename from the Content-Disposition header
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = 'download';
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '');
+        }
       }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `dataset-${id}${getFileExtension(response)}`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
-      console.error('Error downloading dataset:', error);
+      console.error('Download error:', error);
       throw error;
     }
   },
 
-  // Delete dataset
+  // Delete a dataset
   async deleteDataset(id) {
     try {
-      const response = await fetch(`${API_ENDPOINTS.datasets}/${id}`, {
+      const response = await fetch(`${API_ENDPOINTS.GET_FILES}/${id}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete dataset');
+        const error = await response.json();
+        throw new Error(error.message || 'Delete failed');
       }
 
       return await response.json();
     } catch (error) {
-      console.error('Error deleting dataset:', error);
+      console.error('Delete error:', error);
       throw error;
     }
   }
 };
 
-// Helper function to get file extension from response headers
-function getFileExtension(response) {
-  const contentType = response.headers.get('content-type');
-  const extensions = {
-    'application/pdf': '.pdf',
-    'application/json': '.json',
-    'text/csv': '.csv',
-    'application/vnd.ms-excel': '.xls',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
-    'text/plain': '.txt'
-  };
-  return extensions[contentType] || '';
-}
-
-export default datasetService; 
+export default datasetService;

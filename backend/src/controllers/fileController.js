@@ -2,7 +2,11 @@ const path = require('path');
 const fs = require('fs').promises;
 const File = require('../models/File');
 const DownloadHistory = require('../models/DownloadHistory');
-const { generateFileHash, checkDuplicate, findSimilarFiles } = require('../../utils/duplicateCheck');
+const duplicateCheck = require('../../utils/duplicateCheck');
+
+/**
+ * @typedef {import('../../utils/duplicateCheck').DuplicateResult} DuplicateResult
+ */
 
 // Helper function to check if file/directory exists
 const checkExists = async (path) => {
@@ -20,6 +24,7 @@ const createDirectoryIfNotExists = async (dirPath) => {
     const exists = await checkExists(dirPath);
     if (!exists) {
       await fs.mkdir(dirPath, { recursive: true });
+      console.log('Created directory:', dirPath);
     }
     return true;
   } catch (error) {
@@ -29,8 +34,15 @@ const createDirectoryIfNotExists = async (dirPath) => {
 };
 
 // Upload file
-exports.uploadFile = async (req, res) => {
+const uploadFile = async (req, res) => {
   try {
+    console.log('File upload request received:', {
+      filename: req.file?.originalname,
+      size: req.file?.size,
+      mimetype: req.file?.mimetype,
+      tempPath: req.file?.path
+    });
+
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -39,32 +51,30 @@ exports.uploadFile = async (req, res) => {
     }
 
     const uploadsDir = path.join(__dirname, '../../uploads');
+    console.log('Ensuring uploads directory exists:', uploadsDir);
     await createDirectoryIfNotExists(uploadsDir);
 
-    const fileExists = await File.findOne({
-      originalName: req.file.originalname,
-      userId: req.user._id
-    });
+    // Move file from temp to permanent location
+    const permanentPath = path.join(uploadsDir, req.file.filename);
+    await fs.rename(req.file.path, permanentPath);
+    console.log('File moved to permanent location:', permanentPath);
 
-    if (fileExists) {
-      // Remove the uploaded file
-      await fs.unlink(req.file.path);
-      return res.status(400).json({
-        success: false,
-        message: 'File with this name already exists'
-      });
-    }
-
+    // Create file record in database
     const file = new File({
       originalName: req.file.originalname,
       fileName: req.file.filename,
       mimeType: req.file.mimetype,
       size: req.file.size,
-      path: req.file.path,
-      userId: req.user._id
+      path: permanentPath,
+      userId: req.user._id,
+      department: req.body.department || 'General',
+      description: req.body.description || '',
+      tags: req.body.tags ? req.body.tags.split(',') : [],
+      status: 'Active'
     });
 
     await file.save();
+    console.log('File record created in database:', file._id);
 
     res.status(201).json({
       success: true,
@@ -72,57 +82,119 @@ exports.uploadFile = async (req, res) => {
       file: {
         id: file._id,
         originalName: file.originalName,
+        fileName: file.fileName,
         size: file.size,
-        uploadedAt: file.createdAt
+        createdAt: file.createdAt
       }
     });
   } catch (error) {
-    console.error('File upload error:', error);
-    // Clean up uploaded file if there was an error
-    if (req.file) {
-      try {
-        await fs.unlink(req.file.path);
-      } catch (unlinkError) {
-        console.error('Error deleting uploaded file:', unlinkError);
-      }
-    }
+    console.error('Error in file upload:', error);
     res.status(500).json({
       success: false,
-      message: 'Error uploading file'
+      message: 'Error uploading file',
+      error: error.message
     });
   }
 };
 
-// Get all files
-exports.getAllFiles = async (req, res) => {
+// Check for duplicates
+const checkForDuplicatesHandler = async (req, res) => {
+  console.log('Starting duplicate check process');
   try {
-    const files = await File.find().populate('uploadedBy', 'username');
-    res.json(files);
+    if (!req.file) {
+      console.log('No file received in request');
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    console.log('Analyzing file for duplicates:', {
+      filename: req.file.originalname,
+      path: req.file.path,
+      size: req.file.size
+    });
+
+    /** @type {DuplicateResult} */
+    const results = await duplicateCheck.checkForDuplicates(req.file.path);
+    
+    console.log('Duplicate check completed:', {
+      hasDuplicates: results.hasDuplicates,
+      totalRecords: results.totalRecords,
+      duplicatePairs: results.duplicates?.length || 0
+    });
+    
+    // Delete the temporary file after analysis
+    try {
+      await fs.unlink(req.file.path);
+      console.log('Temporary file deleted:', req.file.path);
+    } catch (error) {
+      console.error('Error deleting temporary file:', error);
+    }
+
+    res.json({
+      success: true,
+      hasDuplicates: results.hasDuplicates,
+      totalRecords: results.totalRecords,
+      duplicatePairs: results.duplicates?.length || 0
+    });
   } catch (error) {
-    console.error('Error fetching files:', error);
-    res.status(500).json({ message: 'Server error fetching files' });
+    console.error('Error checking duplicates:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking for duplicates',
+      error: error.message
+    });
+  }
+};
+
+// List all files
+const listFiles = async (req, res) => {
+  try {
+    const files = await File.find({ 
+      userId: req.user._id,
+      isDeleted: false 
+    })
+    .select('originalName fileName size createdAt department description tags status')
+    .sort({ createdAt: -1 });
+
+    // Transform the files to match the frontend expectations
+    const transformedFiles = files.map(file => ({
+      _id: file._id,
+      name: file.originalName,
+      fileName: file.fileName,
+      size: file.size,
+      createdAt: file.createdAt,
+      department: file.department || 'General',
+      description: file.description || '',
+      tags: file.tags || [],
+      fileType: file.originalName.split('.').pop().toLowerCase(),
+      status: file.status || 'Active'
+    }));
+
+    res.json({
+      success: true,
+      files: transformedFiles
+    });
+  } catch (error) {
+    console.error('Error listing files:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving files',
+      error: error.message
+    });
   }
 };
 
 // Get file by ID
-exports.getFileById = async (req, res) => {
+const getFileById = async (req, res) => {
   try {
-    const file = await File.findById(req.params.id).populate('uploadedBy', 'username');
-    if (!file) {
-      return res.status(404).json({ message: 'File not found' });
-    }
-    res.json(file);
-  } catch (error) {
-    console.error('Error fetching file:', error);
-    res.status(500).json({ message: 'Server error fetching file' });
-  }
-};
+    const file = await File.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+      isDeleted: false
+    });
 
-// Download file
-exports.downloadFile = async (req, res) => {
-  try {
-    const file = await File.findById(req.params.id);
-    
     if (!file) {
       return res.status(404).json({
         success: false,
@@ -130,123 +202,72 @@ exports.downloadFile = async (req, res) => {
       });
     }
 
-    // Check if file exists in filesystem
-    const fileExists = await checkExists(file.path);
-    if (!fileExists) {
-      await File.findByIdAndDelete(file._id);
+    res.json({
+      success: true,
+      file
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving file',
+      error: error.message
+    });
+  }
+};
+
+// Download file
+const downloadFile = async (req, res) => {
+  try {
+    const file = await File.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+      isDeleted: false
+    });
+
+    if (!file) {
       return res.status(404).json({
         success: false,
-        message: 'File not found in storage'
+        message: 'File not found'
       });
     }
 
     // Record download history
     const downloadHistory = new DownloadHistory({
       fileId: file._id,
-      userId: req.user._id,
-      fileName: file.originalName
+      userId: req.user._id
     });
     await downloadHistory.save();
 
-    res.download(file.path, file.originalName);
+    // Update download count
+    file.downloadCount += 1;
+    await file.save();
+
+    res.download(file.path, file.originalName, (err) => {
+      if (err) {
+        console.error('Error downloading file:', err);
+        res.status(500).json({
+          success: false,
+          message: 'Error downloading file',
+          error: err.message
+        });
+      }
+    });
   } catch (error) {
-    console.error('File download error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error downloading file'
+      message: 'Error downloading file',
+      error: error.message
     });
-  }
-};
-
-// Check for duplicates before uploading
-exports.checkForDuplicates = async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'No file provided for check' 
-      });
-    }
-
-    const { size, path: filePath } = req.file;
-    const fileContent = await fs.readFile(filePath);
-    const fileHash = generateFileHash(fileContent);
-    
-    // Check for exact duplicates and similar files
-    const duplicateCheck = await checkDuplicate(fileHash, size);
-    
-    // Extract metadata if provided
-    let metadata = {};
-    if (req.body.metadata) {
-      try {
-        metadata = JSON.parse(req.body.metadata);
-      } catch (e) {
-        console.error('Error parsing metadata:', e);
-      }
-    }
-    
-    // Find files with similar metadata
-    const similarByMetadata = await findSimilarFiles(metadata) || [];
-    
-    // Remove the temporary file after check
-    await fs.unlink(filePath);
-    
-    res.json({
-      success: true,
-      data: {
-        exactDuplicates: duplicateCheck.exact,
-        similarBySize: duplicateCheck.similar,
-        similarByMetadata: similarByMetadata
-      }
-    });
-    
-  } catch (error) {
-    console.error('Error checking for duplicates:', error);
-    // Clean up the temporary file if it exists
-    if (req.file && req.file.path) {
-      try {
-        await fs.unlink(req.file.path);
-      } catch (unlinkError) {
-        console.error('Error deleting temporary file:', unlinkError);
-      }
-    }
-    res.status(500).json({ 
-      success: false,
-      message: 'Server error checking for duplicates' 
-    });
-  }
-};
-
-// Get user's downloaded files
-exports.getUserDownloads = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    
-    const downloads = await DownloadHistory.find({ userId })
-      .populate({
-        path: 'fileId',
-        populate: {
-          path: 'uploadedBy',
-          select: 'username'
-        }
-      })
-      .sort({ downloadedAt: -1 });
-      
-    const files = downloads.map(d => d.fileId);
-    
-    res.json(files);
-  } catch (error) {
-    console.error('Error fetching user downloads:', error);
-    res.status(500).json({ message: 'Server error fetching user downloads' });
   }
 };
 
 // Delete file
-exports.deleteFile = async (req, res) => {
+const deleteFile = async (req, res) => {
   try {
     const file = await File.findOne({
       _id: req.params.id,
-      userId: req.user._id
+      userId: req.user._id,
+      isDeleted: false
     });
 
     if (!file) {
@@ -256,49 +277,30 @@ exports.deleteFile = async (req, res) => {
       });
     }
 
-    // Check if file exists in filesystem before trying to delete
-    const fileExists = await checkExists(file.path);
-    if (fileExists) {
-      await fs.unlink(file.path);
-    }
+    // Soft delete the file
+    file.isDeleted = true;
+    file.deletedAt = new Date();
+    await file.save();
 
-    await File.findByIdAndDelete(file._id);
-    await DownloadHistory.deleteMany({ fileId: file._id });
-
-    res.status(200).json({
+    res.json({
       success: true,
       message: 'File deleted successfully'
     });
   } catch (error) {
-    console.error('File deletion error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error deleting file'
+      message: 'Error deleting file',
+      error: error.message
     });
   }
 };
 
-// List files
-exports.listFiles = async (req, res) => {
-  try {
-    const files = await File.find({ userId: req.user._id })
-      .select('originalName size createdAt')
-      .sort('-createdAt');
-
-    res.status(200).json({
-      success: true,
-      files: files.map(file => ({
-        id: file._id,
-        name: file.originalName,
-        size: file.size,
-        uploadedAt: file.createdAt
-      }))
-    });
-  } catch (error) {
-    console.error('List files error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error listing files'
-    });
-  }
+// Export all controller functions
+module.exports = {
+  uploadFile,
+  checkForDuplicatesHandler,
+  listFiles,
+  getFileById,
+  downloadFile,
+  deleteFile
 };

@@ -1,33 +1,68 @@
 // API Configuration
-export const API_BASE_URL = 'http://localhost:5000';
+export const API_BASE_URL = 'http://localhost:5000/api';
 
 export const API_ENDPOINTS = {
-  LOGIN: `${API_BASE_URL}/api/auth`,
-  HEALTH: `${API_BASE_URL}/api/health`,
-  STATS: `${API_BASE_URL}/api/stats`,
-  UPLOAD: `${API_BASE_URL}/api/records`,
-  EXPORT: `${API_BASE_URL}/api/records/export`, // More specific if needed
-  DUPLICATES: `${API_BASE_URL}/api/records/duplicates`,
-  RECORDS: `${API_BASE_URL}/api/records`,
-  DATASETS: `${API_BASE_URL}/api/datasets`, // Uppercase for consistency
+  // Auth endpoints
+  SIGN_IN: `${API_BASE_URL}/auth/login`,
+  SIGN_UP: `${API_BASE_URL}/auth/register`,
+  FORGOT_PASSWORD: `${API_BASE_URL}/auth/forgot-password`,
+  RESET_PASSWORD: `${API_BASE_URL}/auth/reset-password`,
+  VERIFY_EMAIL: `${API_BASE_URL}/auth/verify-email`,
+  RESEND_VERIFICATION: `${API_BASE_URL}/auth/resend-verification`,
+  CHANGE_PASSWORD: `${API_BASE_URL}/auth/change-password`,
+  GET_ME: `${API_BASE_URL}/auth/me`,
+  
+  // File endpoints
+  UPLOAD_FILE: `${API_BASE_URL}/files/upload`,
+  GET_FILES: `${API_BASE_URL}/files`,
+  GET_FILE: `${API_BASE_URL}/files/:id`,
+  DOWNLOAD_FILE: `${API_BASE_URL}/files/:id/download`,
+  DELETE_FILE: `${API_BASE_URL}/files/:id`,
+  CHECK_DUPLICATES: `${API_BASE_URL}/files/:id/check-duplicates`,
+  HEALTH: `${API_BASE_URL}/health`,
+  STATS: `${API_BASE_URL}/stats`
 };
 
 export const API_CONFIG = {
   headers: {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
+    'Accept': 'application/json',
+    'Content-Type': 'application/json'
   },
   mode: 'cors',
-  credentials: 'same-origin',
+  credentials: 'include'
 };
 
 // Get auth headers with token
 export const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
-  return {
-    ...API_CONFIG.headers,
-    Authorization: token ? `Bearer ${token}` : '',
+  const headers = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json'
   };
+
+  if (token) {
+    console.log('Adding auth token to headers:', token);
+    headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    console.warn('No authentication token found');
+  }
+
+  return headers;
+};
+
+// Helper function to handle API errors
+export const handleApiError = async (response) => {
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.message || 'API request failed');
+  }
+  return response;
+};
+
+// Check if user is authenticated
+export const isAuthenticated = () => {
+  const token = localStorage.getItem('token');
+  return !!token;
 };
 
 // Helper function to check if the server is running
@@ -43,14 +78,4 @@ export const checkServerHealth = async () => {
     console.error('Server health check failed:', error);
     return false;
   }
-};
-
-// Helper function to handle API errors
-export const handleApiError = (error) => {
-  if (error.response) {
-    return error.response.data?.message || 'An error occurred';
-  } else if (error.request) {
-    return 'No response from server. Please check your connection.';
-  }
-  return error.message || 'Network error occurred';
 };

@@ -1,6 +1,6 @@
 {
   "watch": ["*.js", "*.jsx"],
   "ignore": ["node_modules"],
-  "exec": "node -r @babel/register",
+  "exec": "node",
   "ext": "js,jsx,json"
-} 
+}

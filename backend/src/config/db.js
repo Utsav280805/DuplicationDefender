@@ -1,51 +1,65 @@
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
-  // Check if MONGO_URL is defined in environment variables
-  if (!process.env.MONGO_URI) {
-    console.error('MongoDB connection string is not defined in environment variables');
+  if (!process.env.MONGODB_URI) {
+    console.error('MongoDB connection string (MONGODB_URI) is not defined in environment variables');
     process.exit(1);
   }
 
-  try {
-    // MongoDB connection options
-    const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    };
+  const options = {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+    family: 4,
+    retryWrites: true
+  };
 
-    await mongoose.connect(process.env.MONGO_URI, options);
-    console.log('MongoDB Connected Successfully');
-    
-    // Handle MongoDB connection events
-    mongoose.connection.on('connected', () => {
-      console.log('MongoDB connected');
-    });
+  const maxRetries = 3;
+  let retryCount = 0;
 
-    mongoose.connection.on('error', (err) => {
-      console.error('MongoDB connection error:', err);
-    });
+  while (retryCount < maxRetries) {
+    try {
+      console.log(`Attempting to connect to MongoDB (attempt ${retryCount + 1}/${maxRetries})...`);
+      await mongoose.connect(process.env.MONGODB_URI, options);
+      console.log('MongoDB Connected Successfully');
 
-    mongoose.connection.on('disconnected', () => {
-      console.log('MongoDB disconnected');
-    });
+      mongoose.connection.on('error', (err) => {
+        console.error('MongoDB connection error:', err);
+      });
 
-    // Handle application termination
-    process.on('SIGINT', async () => {
-      try {
-        await mongoose.connection.close();
-        console.log('MongoDB connection closed through app termination');
-        process.exit(0);
-      } catch (err) {
-        console.error('Error closing MongoDB connection:', err);
+      mongoose.connection.on('disconnected', () => {
+        console.log('MongoDB connection lost');
+      });
+
+      // Handle application termination
+      process.on('SIGINT', async () => {
+        try {
+          await mongoose.connection.close();
+          console.log('MongoDB connection closed through app termination');
+          process.exit(0);
+        } catch (err) {
+          console.error('Error closing MongoDB connection:', err);
+          process.exit(1);
+        }
+      });
+
+      // If we reach here, connection was successful
+      return;
+
+    } catch (error) {
+      console.error(`MongoDB Connection Error (attempt ${retryCount + 1}/${maxRetries}):`, error);
+      retryCount++;
+      
+      if (retryCount === maxRetries) {
+        console.error('Failed to connect to MongoDB after maximum retries');
         process.exit(1);
       }
-    });
-  } catch (error) {
-    console.error('MongoDB Connection Error:', error);
-    process.exit(1); // Exit the process with a failure code
+
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
   }
 };
 
 module.exports = connectDB;
-

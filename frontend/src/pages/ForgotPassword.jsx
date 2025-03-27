@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { API_ENDPOINTS, API_CONFIG } from '../config/api';
+import { API_ENDPOINTS } from '../config/api';
 import { useToast } from '../components/ui/use-toast';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
@@ -18,22 +18,26 @@ const ForgotPassword = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_ENDPOINTS.LOGIN}/forgot-password`, {
+      const response = await fetch(API_ENDPOINTS.FORGOT_PASSWORD, {
         method: 'POST',
-        ...API_CONFIG,
-        body: JSON.stringify({ email })
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ email }),
+        credentials: 'include'
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
+        const data = await response.json();
         throw new Error(data.message || 'Failed to send reset instructions');
       }
 
+      const data = await response.json();
       setIsEmailSent(true);
       toast({
         title: "Success!",
-        description: "Password reset instructions have been sent to your email.",
+        description: data.message || "Password reset instructions have been sent to your email.",
       });
       
     } catch (error) {
@@ -80,6 +84,7 @@ const ForgotPassword = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="mt-1"
+                disabled={isLoading}
               />
             </div>
 
@@ -130,4 +135,4 @@ const ForgotPassword = () => {
   );
 };
 
-export default ForgotPassword; 
+export default ForgotPassword;

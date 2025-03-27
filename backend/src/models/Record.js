@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const recordSchema = new mongoose.Schema({
-  name: {
+  fileName: {
     type: String,
     required: true,
     trim: true
@@ -13,47 +13,98 @@ const recordSchema = new mongoose.Schema({
   fileType: {
     type: String,
     required: true,
-    enum: ['XLSX', 'XLS', 'CSV']
+    enum: ['CSV', 'XLS', 'XLSX']
   },
   filePath: {
     type: String,
     required: true
   },
-  size: {
-    type: String,
+  fileSize: {
+    type: Number,
     required: true
+  },
+  department: {
+    type: String,
+    required: true,
+    trim: true
   },
   description: {
     type: String,
-    trim: true
+    trim: true,
+    default: ''
   },
   tags: [{
     type: String,
     trim: true
   }],
-  accessLevel: {
-    type: String,
-    enum: ['private', 'public', 'shared'],
-    default: 'private'
-  },
-  status: {
-    type: String,
-    enum: ['pending', 'verified', 'duplicate'],
-    default: 'pending'
-  },
-  createdBy: {
+  uploadedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
+  },
+  uploadedAt: {
+    type: Date,
+    default: Date.now
+  },
+  fileContent: {
+    headers: [String],
+    rows: [{
+      type: Map,
+      of: String
+    }],
+    rowCount: Number,
+    columnCount: Number
+  },
+  duplicateAnalysis: {
+    status: {
+      type: String,
+      enum: ['pending', 'processing', 'completed', 'error'],
+      default: 'pending'
+    },
+    duplicates: [{
+      recordId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Record'
+      },
+      fileName: String,
+      uploadDate: Date,
+      confidence: {
+        type: Number,
+        required: true,
+        min: 0,
+        max: 1
+      },
+      matchedFields: [{
+        fieldName: String,
+        similarity: {
+          type: Number,
+          required: true,
+          min: 0,
+          max: 1
+        }
+      }],
+      status: {
+        type: String,
+        enum: ['pending', 'confirmed', 'rejected'],
+        default: 'pending'
+      }
+    }],
+    lastAnalyzedAt: Date,
+    totalRecordsAnalyzed: {
+      type: Number,
+      default: 0
+    },
+    error: String
   }
 }, {
   timestamps: true
 });
 
 // Create indexes for faster duplicate checking
-recordSchema.index({ email: 1, createdBy: 1 });
-recordSchema.index({ phone: 1, createdBy: 1 });
-recordSchema.index({ name: 1, createdBy: 1 });
+recordSchema.index({ department: 1, uploadedBy: 1 });
+recordSchema.index({ 'fileContent.headers': 1 });
+recordSchema.index({ originalName: 1, uploadedBy: 1 });
+recordSchema.index({ 'duplicateAnalysis.status': 1 });
 
 // Update the updatedAt timestamp before saving
 recordSchema.pre('save', function(next) {

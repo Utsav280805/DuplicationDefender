@@ -21,39 +21,61 @@ const User = require('../models/User');
  */
 const auth = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
-    
+    // Get token from header or cookies
+    const authHeader = req.header('Authorization');
+    const token = authHeader ? authHeader.replace('Bearer ', '') : null;
+
+    console.log('Auth Header:', authHeader); // Debug log
+    console.log('Token:', token); // Debug log
+
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: 'Authentication required'
+        message: 'No authentication token found'
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (!decoded || typeof decoded !== 'object') {
-      throw new Error('Invalid token');
+    try {
+      // Verify token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('Decoded token:', decoded); // Debug log
+
+      // Find user
+      const user = await User.findById(decoded.userId);
+      console.log('Found user:', user ? 'Yes' : 'No'); // Debug log
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Add user info to request
+      req.user = {
+        id: user._id,
+        name: user.name,
+        email: user.email
+      };
+      req.token = token;
+
+      next();
+    } catch (error) {
+      console.error('Token verification error:', error);
+      if (error.name === 'TokenExpiredError') {
+        return res.status(401).json({
+          success: false,
+          message: 'Token expired',
+          expired: true
+        });
+      }
+      throw error;
     }
-
-    const user = await User.findOne({ _id: decoded._id });
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    req.token = token;
-    req.user = user;
-    next();
   } catch (error) {
-    console.error('Auth error:', error);
+    console.error('Auth middleware error:', error);
     res.status(401).json({
       success: false,
-      message: 'Authentication failed'
+      message: 'Authentication failed',
+      error: error.message
     });
   }
 };
 
-module.exports = { auth }; 
+module.exports = auth; 

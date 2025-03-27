@@ -4,7 +4,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Upload, File, X, FileText } from 'lucide-react';
 import { toast } from '../components/ui/use-toast';
-import Loader3D from '../components/ui/Loader3D';
+import Loader from '../components/Loader';
 
 const UploadDataset = () => {
   const [files, setFiles] = useState([]);
@@ -73,7 +73,7 @@ const UploadDataset = () => {
     <div className="container mx-auto px-4 py-5 max-w-3xl">
       {isLoading ? (
         <div className="flex items-center justify-center h-[calc(100vh-200px)]">
-          <Loader3D />
+          <Loader />
         </div>
       ) : (
         <>

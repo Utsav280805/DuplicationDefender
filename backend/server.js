@@ -6,13 +6,20 @@ const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs');
 
+// Debug environment variables
+console.log('Environment variables loaded:', {
+  MONGO_URI: process.env.MONGO_URI ? 'Present' : 'Missing',
+  PORT: process.env.PORT,
+  NODE_ENV: process.env.NODE_ENV
+});
+
 // Import routes
 const authRoutes = require('./src/routes/auth');
 const recordRoutes = require('./src/routes/records');
 const userRoutes = require('./src/routes/user');
 
 const app = express();
-const port = process.env.PORT || 5000;
+const port = process.env.PORT || 7000;
 
 // Middleware
 app.use(cors({
@@ -63,14 +70,24 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('MongoDB connected successfully'))
-  .catch(err => console.error('MongoDB connection error:', err));
+// Connect to MongoDB with error handling
+const connectDB = async () => {
+  try {
+    if (!process.env.MONGO_URI) {
+      throw new Error('MongoDB URI is not defined in environment variables');
+    }
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log('MongoDB connected successfully');
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
+  }
+};
 
 // Start server
 const startServer = async () => {
   try {
+    await connectDB();
     const server = app.listen(port, () => {
       console.log(`Server is running on port ${port}`);
     });

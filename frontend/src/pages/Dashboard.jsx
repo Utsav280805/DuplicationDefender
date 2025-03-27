@@ -357,3 +357,4 @@ const RecentActivity = ({ activities, getActivityColor, getActivityIcon }) => {
 };
 
 export default Dashboard; 
+

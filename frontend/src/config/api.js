@@ -1,43 +1,49 @@
 // API Configuration
-export const API_BASE_URL = 'http://localhost:7000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:7000';
 
 export const API_ENDPOINTS = {
-  LOGIN: `${API_BASE_URL}/api/auth`,
+  LOGIN: `${API_BASE_URL}/api/auth/login`,
+  REGISTER: `${API_BASE_URL}/api/auth/register`,
+  VERIFY_EMAIL: `${API_BASE_URL}/api/auth/verify-email`,
   HEALTH: `${API_BASE_URL}/api/health`,
-  STATS: `${API_BASE_URL}/api/stats`,
-  UPLOAD: `${API_BASE_URL}/api/records`,
-  EXPORT: `${API_BASE_URL}/api/records/export`, // More specific if needed
-  DUPLICATES: `${API_BASE_URL}/api/records/duplicates`,
   RECORDS: `${API_BASE_URL}/api/records`,
-  DATASETS: `${API_BASE_URL}/api/datasets`, // Uppercase for consistency
+  UPLOAD: `${API_BASE_URL}/api/records/upload`,
+  DUPLICATES: `${API_BASE_URL}/api/records/duplicates`,
+  USER_PROFILE: `${API_BASE_URL}/api/user/profile`,
 };
 
 export const API_CONFIG = {
   headers: {
     'Content-Type': 'application/json',
-    Accept: 'application/json',
+    'Accept': 'application/json',
   },
-  mode: 'cors',
-  credentials: 'same-origin',
+  mode: 'cors'
 };
 
 // Get auth headers with token
 export const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
+  if (!token) {
+    console.warn('No auth token found in localStorage');
+    return API_CONFIG.headers;
+  }
+  console.log('Using auth token:', token.substring(0, 20) + '...');
   return {
     ...API_CONFIG.headers,
-    Authorization: token ? `Bearer ${token}` : '',
+    'Authorization': `Bearer ${token}`
   };
 };
 
 // Helper function to check if the server is running
 export const checkServerHealth = async () => {
   try {
+    console.log('Checking server health...');
     const response = await fetch(API_ENDPOINTS.HEALTH, {
       ...API_CONFIG,
       method: 'GET',
     });
     const data = await response.json();
+    console.log('Server health response:', data);
     return data.status === 'ok';
   } catch (error) {
     console.error('Server health check failed:', error);

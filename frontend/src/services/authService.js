@@ -1,6 +1,5 @@
 import { API_ENDPOINTS, API_CONFIG, handleApiError } from '../config/api';
-
-const API_URL = 'http://localhost:5000/api';
+import axios from 'axios';
 
 export const signup = async (name, email, password) => {
   try {
@@ -32,59 +31,42 @@ export const signup = async (name, email, password) => {
   }
 };
 
-export const login = async (email, password) => {
+export const signIn = async (email, password) => {
   try {
-    const response = await fetch(`${API_ENDPOINTS.LOGIN}/login`, {
-      method: 'POST',
-      ...API_CONFIG,
-      body: JSON.stringify({ email, password })
-    });
-
-    const data = await response.json();
-    
-    if (!response.ok) {
-      // Check specifically for email verification error
-      if (data.message === 'Please verify your email before logging in') {
-        throw new Error('Please check your email for verification link before logging in');
-      }
-      // Use server's error message if available, otherwise use default
-      throw new Error(data.message || 'Invalid credentials. Please check your email and password.');
+    const response = await axios.post(API_ENDPOINTS.LOGIN, { email, password });
+    if (response.data.token) {
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
     }
-
-    // Store auth data
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('user', JSON.stringify(data.user));
-    
-    return data;
+    return response.data;
   } catch (error) {
-    console.error('Login error:', error);
-    throw error; // Re-throw the error to be handled by the component
+    throw new Error(error.response?.data?.message || 'Failed to sign in');
   }
 };
 
-export const logout = () => {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
+export const signOut = (navigate) => {
+  try {
+    // Clear all auth-related data from localStorage
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    
+    // Clear any other app-specific data
+    localStorage.clear();
+    
+    // Redirect to sign-in page
+    if (navigate) {
+      navigate('/signin');
+    } else {
+      window.location.href = '/signin';
+    }
+  } catch (error) {
+    console.error('Error during sign out:', error);
+  }
 };
 
 export const isAuthenticated = () => {
   const token = localStorage.getItem('token');
-  if (!token) return false;
-  
-  try {
-    // Verify token expiration
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    if (payload.exp < Date.now() / 1000) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      return false;
-    }
-    return true;
-  } catch {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    return false;
-  }
+  return !!token;
 };
 
 export const getToken = () => {
@@ -114,5 +96,43 @@ export const resendVerificationEmail = async (email) => {
   } catch (error) {
     console.error('Resend verification email error:', error);
     throw error;
+  }
+};
+
+export const refreshSession = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return false;
+
+    const response = await fetch(`${API_ENDPOINTS.LOGIN}/refresh`, {
+      method: 'POST',
+      headers: {
+        ...API_CONFIG.headers,
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      if (response.status === 401) {
+        signOut();
+        return false;
+      }
+      throw new Error(error.message || 'Failed to refresh session');
+    }
+
+    const data = await response.json();
+    
+    // Update token
+    localStorage.setItem('token', data.token);
+    if (data.user) {
+      localStorage.setItem('user', JSON.stringify(data.user));
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Session refresh error:', error);
+    signOut();
+    return false;
   }
 }; 

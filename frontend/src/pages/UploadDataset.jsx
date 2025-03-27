@@ -1,197 +1,161 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Upload, File, X, FileText } from 'lucide-react';
-import { toast } from '../components/ui/use-toast';
-import Loader from '../components/Loader';
+import React, { useState } from 'react';
+import { FiUpload } from 'react-icons/fi';
 
 const UploadDataset = () => {
   const [files, setFiles] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [metadata, setMetadata] = useState({
-    department: '',
-    description: '',
-    tags: ''
-  });
+  const [department, setDepartment] = useState('');
+  const [description, setDescription] = useState('');
+  const [tags, setTags] = useState('');
 
-  useEffect(() => {
-    // Show loading animation for 4 seconds to match the animation duration
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 4000); // Changed from 1000 to 4000 to show full animation cycle
-    return () => clearTimeout(timer);
-  }, []);
-
-  const onDrop = useCallback(acceptedFiles => {
-    setFiles(prev => [...prev, ...acceptedFiles.map(file => ({
-      file,
-      id: Math.random().toString(36).substr(2, 9)
-    }))]);
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'text/csv': ['.csv'],
-      'application/vnd.ms-excel': ['.xls'],
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
-    }
-  });
-
-  const removeFile = (fileId) => {
-    setFiles(files.filter(f => f.id !== fileId));
+  const handleFileUpload = (e) => {
+    const uploadedFiles = Array.from(e.target.files);
+    setFiles(uploadedFiles);
   };
 
-  const handleUpload = async () => {
-    if (files.length === 0) {
-      toast({
-        title: "Error",
-        description: "Please select files to upload",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!metadata.department) {
-      toast({
-        title: "Error",
-        description: "Please select a department",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Here you would typically upload the files
-    toast({
-      title: "Success",
-      description: "Files uploaded successfully",
-    });
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    // Handle form submission
   };
 
   return (
-    <div className="container mx-auto px-4 py-5 max-w-3xl">
-      {isLoading ? (
-        <div className="flex items-center justify-center h-[calc(100vh-200px)]">
-          <Loader />
-        </div>
-      ) : (
-        <>
-          <div className="flex items-center gap-2 mb-4">
-            <h1 className="text-xl font-semibold">Upload Dataset</h1>
-            <p className="text-sm text-gray-600">Upload your data files for duplicate detection</p>
-          </div>
+    <div className="max-w-5xl mx-auto">
+      <div className="flex items-center gap-3 mb-8">
+        <FiUpload className="w-6 h-6 text-blue-600" />
+        <h1 className="text-2xl font-semibold">Upload Dataset</h1>
+      </div>
 
-          <div className="space-y-4">
-            {/* Upload Area */}
-            <div 
-              {...getRootProps()} 
-              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors
-                ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
-            >
-              <input {...getInputProps()} />
-              <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-600 mb-1">
-                {isDragActive ? 'Drop the files here' : 'Drag & drop files here, or click to select files'}
-              </p>
-              <p className="text-xs text-gray-500">Supported formats: CSV, XLS, XLSX</p>
+      <div className="bg-white rounded-lg p-6">
+        <form onSubmit={handleSubmit}>
+          <div className="grid gap-6">
+            <div className="grid grid-cols-2 gap-6">
+              {/* Department */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Department
+                </label>
+                <select
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select Department</option>
+                  <option value="HR">HR</option>
+                  <option value="Finance">Finance</option>
+                  <option value="Marketing">Marketing</option>
+                  <option value="Sales">Sales</option>
+                </select>
+              </div>
+
+              {/* Tags */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tags (comma-separated, optional)
+                </label>
+                <input
+                  type="text"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                  placeholder="tag1, tag2, tag3..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
 
-            {/* File List */}
+            {/* Description */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Description (optional)
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Enter a description for your dataset..."
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* File Upload */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Files
+              </label>
+              <div 
+                className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors cursor-pointer"
+                onClick={() => document.querySelector('input[type="file"]').click()}
+              >
+                <input
+                  type="file"
+                  multiple
+                  accept=".csv,.xls,.xlsx"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <div className="flex flex-col items-center">
+                  <FiUpload className="w-10 h-10 text-gray-400 mb-3" />
+                  <p className="text-blue-600 mb-1">Upload files or drag and drop</p>
+                  <p className="text-sm text-gray-500">CSV, XLS, XLSX up to 10MB</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Uploaded Files List */}
             {files.length > 0 && (
-              <div className="mb-4">
-                <h3 className="text-sm font-medium mb-2">Selected Files</h3>
-                <div className="space-y-2">
-                  {files.map(({ file, id }) => (
-                    <div key={id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <File className="w-4 h-4 text-gray-500" />
-                        <div>
-                          <p className="text-sm font-medium">{file.name}</p>
-                          <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => removeFile(id)}
-                        className="p-1 hover:bg-gray-200 rounded-full"
-                      >
-                        <X className="w-3 h-3 text-gray-500" />
-                      </button>
-                    </div>
-                  ))}
+              <div className="mt-4">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Uploaded Files</h3>
+                <div className="bg-white rounded-lg border border-gray-200">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">File Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duplicates</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Upload Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {files.map((file, index) => (
+                        <tr key={index}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{file.name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Unspecified</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">
+                              pending
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                              0
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date().toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
 
-            {/* Metadata Form */}
-            <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-              <div className="flex items-center gap-2 mb-3">
-                <FileText className="w-4 h-4 text-blue-500" />
-                <h3 className="text-sm font-medium">File Information</h3>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Department
-                  </label>
-                  <select
-                    value={metadata.department}
-                    onChange={(e) => setMetadata({ ...metadata, department: e.target.value })}
-                    className="w-full text-xs border-gray-200 rounded-md shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">Select Department</option>
-                    <option value="HR">HR</option>
-                    <option value="Finance">Finance</option>
-                    <option value="Marketing">Marketing</option>
-                    <option value="IT">IT</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Tags
-                  </label>
-                  <Input
-                    type="text"
-                    placeholder="e.g. monthly, reports"
-                    value={metadata.tags}
-                    onChange={(e) => setMetadata({ ...metadata, tags: e.target.value })}
-                    className="text-xs h-8"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Description
-                  </label>
-                  <Input
-                    type="text"
-                    placeholder="Brief description of these files"
-                    value={metadata.description}
-                    onChange={(e) => setMetadata({ ...metadata, description: e.target.value })}
-                    className="text-xs h-8"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex justify-end gap-2">
-              <Button 
-                variant="outline" 
-                onClick={() => setFiles([])}
-                size="sm"
+            {/* Submit Button */}
+            <div>
+              <button
+                type="submit"
+                disabled={!department}
+                className={`flex items-center justify-center w-full px-4 py-2 rounded-md text-white transition-colors ${
+                  department ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-300 cursor-not-allowed'
+                }`}
               >
-                Clear All
-              </Button>
-              <Button 
-                onClick={handleUpload}
-                size="sm"
-              >
-                Upload Files
-              </Button>
+                <FiUpload className="w-5 h-5 mr-2" />
+                Please Select Department
+              </button>
             </div>
           </div>
-        </>
-      )}
+        </form>
+      </div>
     </div>
   );
 };

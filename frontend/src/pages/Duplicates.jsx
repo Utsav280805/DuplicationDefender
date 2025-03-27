@@ -1,35 +1,61 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Search, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import axios from 'axios';
+import { toast } from 'react-hot-toast';
 
 const Duplicates = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [confidenceThreshold, setConfidenceThreshold] = useState(80);
+  const [duplicates, setDuplicates] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const duplicates = [
-    {
-      id: 1,
-      original: { name: 'Employee Data 2024', department: 'HR', date: '2024-02-20' },
-      duplicate: { name: 'Employee Data 2024', department: 'HR', date: '2024-02-21' },
-      confidence: 85,
-      status: 'pending'
-    },
-    {
-      id: 2,
-      original: { name: 'Sales Report Q1', department: 'Finance', date: '2024-02-19' },
-      duplicate: { name: 'Sales Report Q1', department: 'Finance', date: '2024-02-19' },
-      confidence: 92,
-      status: 'resolved'
-    },
-    {
-      id: 3,
-      original: { name: 'Marketing Campaign', department: 'Marketing', date: '2024-02-18' },
-      duplicate: { name: 'Marketing Campaign', department: 'Marketing', date: '2024-02-18' },
-      confidence: 78,
-      status: 'rejected'
+  // Fetch duplicates when confidence threshold changes
+  useEffect(() => {
+    fetchDuplicates();
+  }, [confidenceThreshold]);
+
+  const fetchDuplicates = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get('/api/records/duplicates', {
+        params: { confidence: confidenceThreshold }
+      });
+      setDuplicates(response.data.duplicates);
+    } catch (error) {
+      console.error('Error fetching duplicates:', error);
+      toast.error('Failed to fetch duplicates');
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
+
+  const handleMerge = async (sourceId, targetId) => {
+    try {
+      await axios.post('/api/records/merge', { sourceId, targetId });
+      toast.success('Records merged successfully');
+      fetchDuplicates(); // Refresh the list
+    } catch (error) {
+      console.error('Error merging records:', error);
+      toast.error('Failed to merge records');
+    }
+  };
+
+  const handleIgnore = async (duplicateId) => {
+    try {
+      await axios.post(`/api/records/${duplicateId}/ignore`);
+      toast.success('Duplicate ignored');
+      fetchDuplicates(); // Refresh the list
+    } catch (error) {
+      console.error('Error ignoring duplicate:', error);
+      toast.error('Failed to ignore duplicate');
+    }
+  };
+
+  const handleScan = () => {
+    fetchDuplicates();
+  };
 
   const filteredDuplicates = duplicates.filter(dup =>
     dup.original.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -78,12 +104,14 @@ const Duplicates = () => {
             min="0"
             max="100"
             value={confidenceThreshold}
-            onChange={(e) => setConfidenceThreshold(e.target.value)}
+            onChange={(e) => setConfidenceThreshold(parseInt(e.target.value))}
             className="w-20"
           />
           <span className="text-sm text-gray-600">%</span>
         </div>
-        <Button>Scan for Duplicates</Button>
+        <Button onClick={handleScan} disabled={loading}>
+          {loading ? 'Scanning...' : 'Scan for Duplicates'}
+        </Button>
       </div>
 
       <div className="space-y-4">
@@ -99,10 +127,19 @@ const Duplicates = () => {
                 </span>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handleIgnore(duplicate.id)}
+                  disabled={duplicate.status !== 'pending'}
+                >
                   Ignore
                 </Button>
-                <Button size="sm">
+                <Button 
+                  size="sm"
+                  onClick={() => handleMerge(duplicate.duplicate.id, duplicate.original.id)}
+                  disabled={duplicate.status !== 'pending'}
+                >
                   Merge
                 </Button>
               </div>
@@ -152,7 +189,13 @@ const Duplicates = () => {
           </div>
         ))}
 
-        {filteredDuplicates.length === 0 && (
+        {loading && (
+          <div className="text-center py-12">
+            <p className="text-gray-500">Scanning for duplicates...</p>
+          </div>
+        )}
+
+        {!loading && filteredDuplicates.length === 0 && (
           <div className="text-center py-12">
             <p className="text-gray-500">No duplicates found.</p>
           </div>

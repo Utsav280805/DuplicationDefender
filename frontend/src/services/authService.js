@@ -33,7 +33,7 @@ export const signup = async (name, email, password) => {
 
 export const signIn = async (email, password) => {
   try {
-    const response = await axios.post(API_ENDPOINTS.LOGIN, { email, password });
+    const response = await axios.post(API_ENDPOINTS.AUTH.LOGIN, { email, password });
     if (response.data.token) {
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));

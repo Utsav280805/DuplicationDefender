@@ -2,10 +2,13 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:7000';
 
 export const API_ENDPOINTS = {
+  // Auth endpoints
   LOGIN: `${API_BASE_URL}/api/auth/login`,
   REGISTER: `${API_BASE_URL}/api/auth/register`,
-  VERIFY_EMAIL: `${API_BASE_URL}/api/auth/verify-email`,
-  HEALTH: `${API_BASE_URL}/api/health`,
+  FORGOT_PASSWORD: `${API_BASE_URL}/api/auth/forgot-password`,
+  RESET_PASSWORD: `${API_BASE_URL}/api/auth/reset-password`,
+  
+  // Keep existing endpoints unchanged
   RECORDS: `${API_BASE_URL}/api/records`,
   UPLOAD: `${API_BASE_URL}/api/records/upload`,
   DUPLICATES: `${API_BASE_URL}/api/records/duplicates`,
@@ -34,11 +37,21 @@ export const getAuthHeaders = () => {
   };
 };
 
+// Helper function to handle API errors
+export const handleApiError = (error) => {
+  if (error.response) {
+    return error.response.data?.message || 'An error occurred';
+  } else if (error.request) {
+    return 'No response from server. Please check your connection.';
+  }
+  return error.message || 'Network error occurred';
+};
+
 // Helper function to check if the server is running
 export const checkServerHealth = async () => {
   try {
     console.log('Checking server health...');
-    const response = await fetch(API_ENDPOINTS.HEALTH, {
+    const response = await fetch(`${API_BASE_URL}/api/health`, {
       ...API_CONFIG,
       method: 'GET',
     });
@@ -49,14 +62,4 @@ export const checkServerHealth = async () => {
     console.error('Server health check failed:', error);
     return false;
   }
-};
-
-// Helper function to handle API errors
-export const handleApiError = (error) => {
-  if (error.response) {
-    return error.response.data?.message || 'An error occurred';
-  } else if (error.request) {
-    return 'No response from server. Please check your connection.';
-  }
-  return error.message || 'Network error occurred';
 };

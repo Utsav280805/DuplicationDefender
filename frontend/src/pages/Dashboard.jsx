@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from '../components/ui/use-toast';
 import { ScrollArea } from "../components/ui/scroll-area";
 import { formatDistanceToNow } from "date-fns";
+import { uploadFile } from '../services/recordService';
 
 // Register ChartJS components
 ChartJS.register(
@@ -129,14 +130,45 @@ const Dashboard = () => {
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (file) {
-        // Here you would typically handle the file upload
-        toast({
-          title: "Upload Started",
-          description: `Uploading ${file.name}...`,
-          duration: 3000,
-        });
-        // Navigate to data management page
-        navigate('/data');
+        try {
+          // Create FormData and append the file
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('fileName', file.name);
+          formData.append('fileType', file.type);
+          formData.append('fileSize', file.size);
+          formData.append('department', 'General'); // Default department
+          formData.append('description', `Uploaded via dashboard: ${file.name}`);
+          formData.append('tags', JSON.stringify(['dashboard-upload']));
+
+          // Show upload started toast
+          toast({
+            title: "Upload Started",
+            description: `Uploading ${file.name}...`,
+            duration: 3000,
+          });
+
+          // Upload the file
+          await uploadFile(formData);
+
+          // Show success toast
+          toast({
+            title: "Upload Successful",
+            description: `${file.name} has been uploaded successfully`,
+            duration: 3000,
+          });
+
+          // Navigate to data management page
+          navigate('/data');
+        } catch (error) {
+          // Show error toast
+          toast({
+            title: "Upload Failed",
+            description: error.message || "Failed to upload file",
+            variant: "destructive",
+            duration: 3000,
+          });
+        }
       }
     };
     input.click();

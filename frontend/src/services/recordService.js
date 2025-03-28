@@ -1,43 +1,29 @@
 import axios from 'axios';
 import { API_ENDPOINTS, getAuthHeaders, handleApiError } from '../config/api';
 
+const API_BASE_URL = 'http://localhost:8081/api';
+
+// For generating unique IDs for duplicate groups
+const crypto = {
+  randomUUID: () => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+};
+
 export const getAllRecords = async () => {
   try {
-    console.log('Fetching records...');
-    
-    const response = await axios.get(API_ENDPOINTS.RECORDS.LIST, {
+    const response = await axios.get('/api/records', {
       headers: getAuthHeaders()
     });
 
-    if (!response.data?.success) {
-      throw new Error(response.data?.message || 'Failed to fetch records');
-    }
-
-    const records = response.data.records;
-    if (!Array.isArray(records)) {
-      console.error('Invalid records data:', records);
-      return [];
-    }
-
-    return records.map(record => ({
-      _id: record._id,
-      fileName: record.fileName || record.originalName,
-      originalName: record.originalName || record.fileName,
-      fileType: record.fileType || record.fileName?.split('.').pop().toUpperCase() || 'Unknown',
-      fileSize: parseInt(record.fileSize) || 0,
-      department: record.department || 'Unspecified',
-      description: record.description || '',
-      tags: Array.isArray(record.tags) ? record.tags : [],
-      uploadedAt: record.uploadedAt || record.createdAt || new Date().toISOString(),
-      duplicateAnalysis: {
-        status: record.duplicateAnalysis?.status || 'pending',
-        duplicatesCount: record.duplicateAnalysis?.duplicatesCount || 0,
-        lastAnalyzedAt: record.duplicateAnalysis?.lastAnalyzedAt,
-        duplicates: record.duplicateAnalysis?.duplicates || []
-      }
-    }));
+    return response.data.records || [];
   } catch (error) {
-    throw new Error(handleApiError(error));
+    console.error('Error fetching records:', error);
+    throw error;
   }
 };
 
@@ -69,6 +55,7 @@ export const uploadFile = async (formData) => {
       }
     };
   } catch (error) {
+    console.error('Error uploading file:', error);
     throw new Error(handleApiError(error));
   }
 };
@@ -109,133 +96,51 @@ export const deleteRecord = async (recordId) => {
   }
 };
 
-export const scanForDuplicates = async (confidenceThreshold, selectedRecordIds = []) => {
-  try {
-    console.log('🔍 Starting duplicate scan with:', {
-      confidenceThreshold,
-      selectedRecordIds,
-      timestamp: new Date().toISOString()
-    });
-
-    // First, trigger analysis for each selected record
-    for (const recordId of selectedRecordIds) {
-      console.log(`📤 Analyzing record: ${recordId}`);
-      try {
-        const analyzeResponse = await axios.post(
-          API_ENDPOINTS.RECORDS.ANALYZE(recordId),
-          { 
-            threshold: confidenceThreshold,
-            recordId: recordId
-          },
-          { 
-            headers: getAuthHeaders()
-          }
-        );
-        console.log(`✅ Analysis initiated for record ${recordId}:`, analyzeResponse.data);
-      } catch (error) {
-        console.error(`❌ Failed to analyze record ${recordId}:`, {
-          status: error.response?.status,
-          message: error.response?.data?.message || error.message
+export const scanForDuplicates = async (recordIds) => {
+    try {
+        console.log('Starting duplicate scan for records:', recordIds);
+        const response = await axios.post(`${API_BASE_URL}/records/scan-duplicates`, {
+            recordIds: recordIds
+        }, {
+            headers: {
+                ...getAuthHeaders(),
+                'Content-Type': 'application/json'
+            }
         });
-      }
+        return response.data;
+    } catch (error) {
+        console.error('Error in scanForDuplicates:', error);
+        throw error;
     }
-
-    // Wait a moment for analysis to process
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Fetch duplicates for each record
-    const duplicateResults = [];
-    for (const recordId of selectedRecordIds) {
-      try {
-        console.log(`📥 Fetching duplicates for record: ${recordId}`);
-        const response = await axios.get(
-          API_ENDPOINTS.RECORDS.DUPLICATES.GET(recordId),
-          {
-            headers: getAuthHeaders(),
-            params: { threshold: confidenceThreshold }
-          }
-        );
-
-        if (response.data?.duplicates?.length > 0) {
-          console.log(`✨ Found duplicates for record ${recordId}:`, response.data.duplicates);
-          duplicateResults.push(...response.data.duplicates);
-        } else {
-          console.log(`ℹ️ No duplicates found for record ${recordId}`);
-        }
-      } catch (error) {
-        console.error(`❌ Error fetching duplicates for record ${recordId}:`, {
-          status: error.response?.status,
-          message: error.response?.data?.message || error.message
-        });
-      }
-    }
-
-    // Process and return results
-    const processedResults = duplicateResults.map(duplicate => ({
-      id: duplicate._id || duplicate.id,
-      confidence: duplicate.confidence || duplicate.score || confidenceThreshold,
-      files: [
-        {
-          id: duplicate.sourceId || duplicate._id,
-          fileName: duplicate.sourceName || 'Source File',
-          department: duplicate.department || 'Unspecified',
-          uploadedAt: duplicate.uploadedAt || new Date().toISOString(),
-          matchedFields: duplicate.matchedFields || []
-        },
-        {
-          id: duplicate.targetId,
-          fileName: duplicate.targetName || 'Target File',
-          department: duplicate.targetDepartment || 'Unspecified',
-          uploadedAt: duplicate.targetUploadedAt || new Date().toISOString(),
-          matchedFields: duplicate.matchedFields || []
-        }
-      ]
-    }));
-
-    console.log('🏁 Final processed results:', {
-      totalDuplicates: processedResults.length,
-      results: processedResults
-    });
-
-    return processedResults;
-  } catch (error) {
-    console.error('💥 Scan error:', {
-      message: error.message,
-      code: error.code,
-      response: {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data
-      }
-    });
-    throw new Error(error.response?.data?.message || error.message || 'Failed to scan for duplicates');
-  }
 };
 
-export const downloadDuplicateReport = async (groupId) => {
-  try {
-    const response = await axios.get(
-      API_ENDPOINTS.RECORDS.DUPLICATES.REPORT(groupId),
-      {
-        headers: getAuthHeaders(),
-        responseType: 'blob'
-      }
-    );
+export const downloadDuplicateReport = async (recordId) => {
+    try {
+        if (!recordId) {
+            throw new Error('No record ID provided for download');
+        }
 
-    const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `duplicate-report-${groupId}.xlsx`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
+        const response = await axios.get(`/api/records/${recordId}/duplicates`, {
+            headers: getAuthHeaders(),
+            responseType: 'blob'
+        });
 
-    return true;
-  } catch (error) {
-    throw new Error(handleApiError(error));
-  }
+        const blob = new Blob([response.data], { type: 'application/json' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `duplicates_${recordId}.json`;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        return { success: true };
+    } catch (error) {
+        console.error('Error in downloadDuplicateReport:', error);
+        throw new Error(error.response?.data?.message || error.message || 'Failed to download duplicate report');
+    }
 };
 
 export const checkDuplicates = async (recordId) => {

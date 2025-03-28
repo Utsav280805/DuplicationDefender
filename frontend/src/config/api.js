@@ -4,16 +4,16 @@ const API_BASE_URL = 'http://localhost:7000/api';
 // API Endpoints configuration
 export const API_ENDPOINTS = {
   // Auth endpoints
-  LOGIN: `${API_BASE_URL}/api/auth/login`,
-  REGISTER: `${API_BASE_URL}/api/auth/register`,
-  FORGOT_PASSWORD: `${API_BASE_URL}/api/auth/forgot-password`,
-  RESET_PASSWORD: `${API_BASE_URL}/api/auth/reset-password`,
+  LOGIN: `${API_BASE_URL}/auth/login`,
+  REGISTER: `${API_BASE_URL}/auth/register`,
+  FORGOT_PASSWORD: `${API_BASE_URL}/auth/forgot-password`,
+  RESET_PASSWORD: `${API_BASE_URL}/auth/reset-password`,
   
   // Keep existing endpoints unchanged
-  RECORDS: `${API_BASE_URL}/api/records`,
-  UPLOAD: `${API_BASE_URL}/api/records/upload`,
-  DUPLICATES: `${API_BASE_URL}/api/records/duplicates`,
-  USER_PROFILE: `${API_BASE_URL}/api/user/profile`,
+  RECORDS: `${API_BASE_URL}/records`,
+  UPLOAD: `${API_BASE_URL}/records/upload`,
+  DUPLICATES: `${API_BASE_URL}/records/duplicates`,
+  USER_PROFILE: `${API_BASE_URL}/user/profile`,
 };
 
 // Default headers configuration
@@ -46,21 +46,11 @@ export const handleApiError = (error) => {
   return error.message || 'Network error occurred';
 };
 
-// Helper function to handle API errors
-export const handleApiError = (error) => {
-  if (error.response) {
-    return error.response.data?.message || 'An error occurred';
-  } else if (error.request) {
-    return 'No response from server. Please check your connection.';
-  }
-  return error.message || 'Network error occurred';
-};
-
 // Helper function to check server health
 export const checkServerHealth = async () => {
   try {
     console.log('Checking server health...');
-    const response = await fetch(`${API_BASE_URL}/api/health`, {
+    const response = await fetch(`${API_BASE_URL}/health`, {
       ...API_CONFIG,
       method: 'GET',
     });
@@ -85,14 +75,4 @@ export const checkServerHealth = async () => {
       message: error.message
     };
   }
-};
-
-// Helper function to handle API errors
-export const handleApiError = (error) => {
-  if (error.response) {
-    return error.response.data?.message || 'An error occurred';
-  } else if (error.request) {
-    return 'No response from server. Please check your connection.';
-  }
-  return error.message || 'Network error occurred';
 };

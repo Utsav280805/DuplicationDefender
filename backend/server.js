@@ -27,7 +27,8 @@ const port = process.env.PORT || 7000;
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:8081', 'http://127.0.0.1:8081'],
+  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8081', 
+          'http://127.0.0.1:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:8081'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   credentials: true,
@@ -41,15 +42,6 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(morgan('dev'));
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/records', recordRoutes);
-app.use('/api/user', userRoutes);
-app.use('/api/duplicates', duplicateRoutes);
-
-// Serve static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
 // Health check route
 app.get('/api/health', (req, res) => {
   const isDbConnected = mongoose.connection.readyState === 1;
@@ -60,6 +52,15 @@ app.get('/api/health', (req, res) => {
     dbName: mongoose.connection.db?.databaseName || 'not connected'
   });
 });
+
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/records', recordRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/duplicates', duplicateRoutes);
+
+// Serve static files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -87,7 +88,10 @@ const connectDB = async () => {
     if (!process.env.MONGO_URI) {
       throw new Error('MongoDB URI is not defined in environment variables');
     }
-    await mongoose.connect(process.env.MONGO_URI);
+    await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
     console.log('MongoDB connected successfully');
   } catch (err) {
     console.error('MongoDB connection error:', err);

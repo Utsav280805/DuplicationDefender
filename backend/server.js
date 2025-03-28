@@ -20,6 +20,7 @@ console.log('Environment variables loaded:', {
 const authRoutes = require('./src/routes/auth');
 const recordRoutes = require('./src/routes/records');
 const userRoutes = require('./src/routes/user');
+const duplicateRoutes = require('./src/routes/duplicates');
 
 const app = express();
 const port = process.env.PORT || 7000;
@@ -44,6 +45,7 @@ app.use(morgan('dev'));
 app.use('/api/auth', authRoutes);
 app.use('/api/records', recordRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/duplicates', duplicateRoutes);
 
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

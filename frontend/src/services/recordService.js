@@ -1,95 +1,57 @@
 import axios from 'axios';
-import { API_ENDPOINTS } from '../config/api';
-import { getAuthHeaders } from '../config/api';
+import { API_ENDPOINTS, getAuthHeaders, handleApiError } from '../config/api';
 
 export const getAllRecords = async () => {
   try {
-    console.log('Fetching records from:', API_ENDPOINTS.RECORDS);
+    console.log('Fetching records...');
     
-    const response = await axios.get(API_ENDPOINTS.RECORDS, {
+    const response = await axios.get(API_ENDPOINTS.RECORDS.LIST, {
       headers: getAuthHeaders()
     });
 
-    console.log('Raw API response:', JSON.stringify(response.data, null, 2));
-
-    if (!response.data || !response.data.success) {
-      console.error('API request failed:', response.data);
+    if (!response.data?.success) {
       throw new Error(response.data?.message || 'Failed to fetch records');
     }
 
     const records = response.data.records;
     if (!Array.isArray(records)) {
-      console.error('Records is not an array:', records);
+      console.error('Invalid records data:', records);
       return [];
     }
 
-    console.log('Records from API:', records);
-
-    // Map the records to ensure all fields are properly displayed
-    const processedRecords = records.map(record => {
-      console.log('Processing record:', record);
-      
-      // Get the file extension from fileName or originalName
-      const fileName = record.fileName || record.originalName;
-      const fileType = fileName 
-        ? fileName.split('.').pop().toUpperCase()
-        : record.fileType?.toUpperCase() || 'Unknown';
-
-      return {
-        _id: record._id,
-        fileName: record.fileName || record.originalName,
-        originalName: record.originalName || record.fileName,
-        fileType: fileType,
-        fileSize: parseInt(record.fileSize) || 0,
-        department: record.department || 'Unspecified',
-        description: record.description || '',
-        tags: Array.isArray(record.tags) ? record.tags : [],
-        uploadedAt: record.uploadedAt || record.createdAt || new Date().toISOString(),
-        duplicateAnalysis: {
-          status: record.duplicateAnalysis?.status || 'pending',
-          duplicatesCount: record.duplicateAnalysis?.duplicatesCount || 0,
-          lastAnalyzedAt: record.duplicateAnalysis?.lastAnalyzedAt,
-          duplicates: record.duplicateAnalysis?.duplicates || []
-        }
-      };
-    });
-
-    console.log('Processed records:', processedRecords);
-    return processedRecords;
+    return records.map(record => ({
+      _id: record._id,
+      fileName: record.fileName || record.originalName,
+      originalName: record.originalName || record.fileName,
+      fileType: record.fileType || record.fileName?.split('.').pop().toUpperCase() || 'Unknown',
+      fileSize: parseInt(record.fileSize) || 0,
+      department: record.department || 'Unspecified',
+      description: record.description || '',
+      tags: Array.isArray(record.tags) ? record.tags : [],
+      uploadedAt: record.uploadedAt || record.createdAt || new Date().toISOString(),
+      duplicateAnalysis: {
+        status: record.duplicateAnalysis?.status || 'pending',
+        duplicatesCount: record.duplicateAnalysis?.duplicatesCount || 0,
+        lastAnalyzedAt: record.duplicateAnalysis?.lastAnalyzedAt,
+        duplicates: record.duplicateAnalysis?.duplicates || []
+      }
+    }));
   } catch (error) {
-    console.error('Error fetching records:', error);
-    if (error.response) {
-      console.error('Error response:', error.response.data);
-    }
-    throw error;
+    throw new Error(handleApiError(error));
   }
 };
 
 export const uploadFile = async (formData) => {
   try {
-    console.log('Uploading file with formData:', {
-      fileName: formData.get('fileName'),
-      department: formData.get('department'),
-      description: formData.get('description'),
-      tags: formData.get('tags')
+    const response = await axios.post(API_ENDPOINTS.RECORDS.UPLOAD, formData, {
+      headers: getAuthHeaders('multipart/form-data')
     });
 
-    const response = await axios.post(API_ENDPOINTS.UPLOAD, formData, {
-      headers: {
-        ...getAuthHeaders(),
-        'Content-Type': 'multipart/form-data'
-      }
-    });
-    
-    console.log('Upload response:', response.data);
-
-    if (!response.data.success) {
-      throw new Error(response.data.message || 'Upload failed');
+    if (!response.data?.success) {
+      throw new Error(response.data?.message || 'Upload failed');
     }
 
     const recordData = response.data.record || response.data.data;
-    
-    // Return the record data with all necessary fields
     return {
       _id: recordData._id,
       fileName: recordData.fileName || formData.get('fileName'),
@@ -107,49 +69,188 @@ export const uploadFile = async (formData) => {
       }
     };
   } catch (error) {
-    console.error('Upload error details:', error.response?.data || error);
-    if (error.response?.data?.message) {
-      throw new Error(`Upload failed: ${error.response.data.message}`);
+    throw new Error(handleApiError(error));
+  }
+};
+
+export const getRecordDetails = async (recordId) => {
+  try {
+    if (!recordId) throw new Error('Record ID is required');
+
+    const response = await axios.get(API_ENDPOINTS.RECORDS.GET(recordId), {
+      headers: getAuthHeaders()
+    });
+    
+    if (!response.data?.success) {
+      throw new Error(response.data?.message || 'Failed to get record details');
     }
-    throw error;
+    
+    return response.data.record;
+  } catch (error) {
+    throw new Error(handleApiError(error));
+  }
+};
+
+export const deleteRecord = async (recordId) => {
+  try {
+    if (!recordId) throw new Error('Record ID is required');
+
+    const response = await axios.delete(API_ENDPOINTS.RECORDS.DELETE(recordId), {
+      headers: getAuthHeaders()
+    });
+
+    if (!response.data?.success) {
+      throw new Error(response.data?.message || 'Failed to delete record');
+    }
+
+    return response.data;
+  } catch (error) {
+    throw new Error(handleApiError(error));
+  }
+};
+
+export const scanForDuplicates = async (confidenceThreshold, selectedRecordIds = []) => {
+  try {
+    console.log('🔍 Starting duplicate scan with:', {
+      confidenceThreshold,
+      selectedRecordIds,
+      timestamp: new Date().toISOString()
+    });
+
+    // First, trigger analysis for each selected record
+    for (const recordId of selectedRecordIds) {
+      console.log(`📤 Analyzing record: ${recordId}`);
+      try {
+        const analyzeResponse = await axios.post(
+          API_ENDPOINTS.RECORDS.ANALYZE(recordId),
+          { 
+            threshold: confidenceThreshold,
+            recordId: recordId
+          },
+          { 
+            headers: getAuthHeaders()
+          }
+        );
+        console.log(`✅ Analysis initiated for record ${recordId}:`, analyzeResponse.data);
+      } catch (error) {
+        console.error(`❌ Failed to analyze record ${recordId}:`, {
+          status: error.response?.status,
+          message: error.response?.data?.message || error.message
+        });
+      }
+    }
+
+    // Wait a moment for analysis to process
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Fetch duplicates for each record
+    const duplicateResults = [];
+    for (const recordId of selectedRecordIds) {
+      try {
+        console.log(`📥 Fetching duplicates for record: ${recordId}`);
+        const response = await axios.get(
+          API_ENDPOINTS.RECORDS.DUPLICATES.GET(recordId),
+          {
+            headers: getAuthHeaders(),
+            params: { threshold: confidenceThreshold }
+          }
+        );
+
+        if (response.data?.duplicates?.length > 0) {
+          console.log(`✨ Found duplicates for record ${recordId}:`, response.data.duplicates);
+          duplicateResults.push(...response.data.duplicates);
+        } else {
+          console.log(`ℹ️ No duplicates found for record ${recordId}`);
+        }
+      } catch (error) {
+        console.error(`❌ Error fetching duplicates for record ${recordId}:`, {
+          status: error.response?.status,
+          message: error.response?.data?.message || error.message
+        });
+      }
+    }
+
+    // Process and return results
+    const processedResults = duplicateResults.map(duplicate => ({
+      id: duplicate._id || duplicate.id,
+      confidence: duplicate.confidence || duplicate.score || confidenceThreshold,
+      files: [
+        {
+          id: duplicate.sourceId || duplicate._id,
+          fileName: duplicate.sourceName || 'Source File',
+          department: duplicate.department || 'Unspecified',
+          uploadedAt: duplicate.uploadedAt || new Date().toISOString(),
+          matchedFields: duplicate.matchedFields || []
+        },
+        {
+          id: duplicate.targetId,
+          fileName: duplicate.targetName || 'Target File',
+          department: duplicate.targetDepartment || 'Unspecified',
+          uploadedAt: duplicate.targetUploadedAt || new Date().toISOString(),
+          matchedFields: duplicate.matchedFields || []
+        }
+      ]
+    }));
+
+    console.log('🏁 Final processed results:', {
+      totalDuplicates: processedResults.length,
+      results: processedResults
+    });
+
+    return processedResults;
+  } catch (error) {
+    console.error('💥 Scan error:', {
+      message: error.message,
+      code: error.code,
+      response: {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data
+      }
+    });
+    throw new Error(error.response?.data?.message || error.message || 'Failed to scan for duplicates');
+  }
+};
+
+export const downloadDuplicateReport = async (groupId) => {
+  try {
+    const response = await axios.get(
+      API_ENDPOINTS.RECORDS.DUPLICATES.REPORT(groupId),
+      {
+        headers: getAuthHeaders(),
+        responseType: 'blob'
+      }
+    );
+
+    const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `duplicate-report-${groupId}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+
+    return true;
+  } catch (error) {
+    throw new Error(handleApiError(error));
   }
 };
 
 export const checkDuplicates = async (recordId) => {
   try {
-    const response = await axios.get(`${API_ENDPOINTS.DUPLICATES}/${recordId}`, {
+    const response = await axios.get(API_ENDPOINTS.DUPLICATES.CHECK(recordId), {
       headers: getAuthHeaders()
     });
+
+    if (!response.data?.success) {
+      throw new Error(response.data?.message || 'Failed to check duplicates');
+    }
+
     return response.data;
   } catch (error) {
-    if (error.response) {
-      throw new Error(error.response.data.message || 'Failed to check duplicates');
-    }
-    throw error;
-  }
-};
-
-export const getRecordDetails = async (recordId) => {
-  if (!recordId) {
-    throw new Error('Record ID is required');
-  }
-  
-  try {
-    const response = await axios.get(`${API_ENDPOINTS.RECORDS}/${recordId}`, {
-      headers: getAuthHeaders()
-    });
-    
-    if (!response.data.success) {
-      throw new Error(response.data.message || 'Failed to get record details');
-    }
-    
-    return response.data.record;
-  } catch (error) {
-    console.error('Get record error:', error);
-    if (error.response?.data?.message) {
-      throw new Error(`Failed to get record details: ${error.response.data.message}`);
-    }
-    throw error;
+    throw new Error(handleApiError(error));
   }
 };
 
@@ -190,28 +291,4 @@ export const pollDuplicateAnalysis = async (recordId, interval = 2000, maxAttemp
   };
 
   return checkStatus();
-};
-
-export const deleteRecord = async (recordId) => {
-  if (!recordId) {
-    throw new Error('Record ID is required');
-  }
-
-  try {
-    const response = await axios.delete(`${API_ENDPOINTS.RECORDS}/${recordId}`, {
-      headers: getAuthHeaders()
-    });
-
-    if (!response.data.success) {
-      throw new Error(response.data.message || 'Failed to delete record');
-    }
-
-    return response.data;
-  } catch (error) {
-    console.error('Delete record error:', error);
-    if (error.response?.data?.message) {
-      throw new Error(`Failed to delete record: ${error.response.data.message}`);
-    }
-    throw error;
-  }
 }; 

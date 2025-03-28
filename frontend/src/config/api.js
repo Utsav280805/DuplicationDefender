@@ -9,11 +9,23 @@ export const API_ENDPOINTS = {
   FORGOT_PASSWORD: `${API_BASE_URL}/auth/forgot-password`,
   RESET_PASSWORD: `${API_BASE_URL}/auth/reset-password`,
   
-  // Keep existing endpoints unchanged
-  RECORDS: `${API_BASE_URL}/records`,
-  UPLOAD: `${API_BASE_URL}/records/upload`,
-  DUPLICATES: `${API_BASE_URL}/records/duplicates`,
-  USER_PROFILE: `${API_BASE_URL}/user/profile`,
+  // Records endpoints
+  RECORDS: {
+    LIST: `${API_BASE_URL}/records`,
+    UPLOAD: `${API_BASE_URL}/records/upload`,
+    GET: (id) => `${API_BASE_URL}/records/${id}`,
+    DELETE: (id) => `${API_BASE_URL}/records/${id}`,
+    ANALYZE: (id) => `${API_BASE_URL}/records/${id}/analyze`,
+    DUPLICATES: {
+      GET: (id) => `${API_BASE_URL}/records/${id}/duplicates`
+    }
+  },
+  
+  // User endpoints
+  USER: {
+    PROFILE: `${API_BASE_URL}/user/profile`,
+    UPDATE: `${API_BASE_URL}/user/update`
+  }
 };
 
 // Default headers configuration

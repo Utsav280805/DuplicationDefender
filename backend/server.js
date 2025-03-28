@@ -21,9 +21,10 @@ const authRoutes = require('./src/routes/auth');
 const recordRoutes = require('./src/routes/records');
 const userRoutes = require('./src/routes/user');
 const duplicateRoutes = require('./src/routes/duplicates');
+const fileRoutes = require('./src/routes/fileRoutes');
 
 const app = express();
-const port = process.env.PORT || 7000;
+const PORT = process.env.PORT || 8081;
 
 // Middleware
 app.use(cors({
@@ -58,6 +59,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/records', recordRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/duplicates', duplicateRoutes);
+app.use('/api/files', fileRoutes);
 
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -103,8 +105,8 @@ const connectDB = async () => {
 const startServer = async () => {
   try {
     await connectDB();
-    const server = app.listen(port, () => {
-      console.log(`Server is running on port ${port}`);
+    const server = app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
     });
 
     // Graceful shutdown

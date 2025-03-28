@@ -1,161 +1,161 @@
-import React, { useState, useEffect } from 'react';
-import { FiDownload, FiSearch } from 'react-icons/fi';
-import { toast } from 'react-hot-toast';
+import React, { useState } from 'react';
 import { scanForDuplicates, downloadDuplicateReport } from '../services/recordService';
+import { FiUpload } from 'react-icons/fi';
 
 const DuplicateDetection = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [confidence, setConfidence] = useState(80);
-  const [isScanning, setIsScanning] = useState(false);
-  const [duplicates, setDuplicates] = useState([]);
-  const [loading, setLoading] = useState(false);
+    const [selectedFiles, setSelectedFiles] = useState([]);
+    const [confidence, setConfidence] = useState(80);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [analysisResults, setAnalysisResults] = useState(null);
+    const [downloadReady, setDownloadReady] = useState(false);
 
-  const handleScan = async () => {
-    setIsScanning(true);
-    try {
-      const results = await scanForDuplicates(confidence / 100);
-      setDuplicates(results);
-      toast.success(`Found ${results.length} potential duplicate groups`);
-    } catch (error) {
-      console.error('Scan error:', error);
-      toast.error('Failed to scan for duplicates');
-    } finally {
-      setIsScanning(false);
-    }
-  };
+    const handleFileSelect = (event) => {
+        const files = Array.from(event.target.files);
+        setSelectedFiles(files);
+        setError(null);
+        setAnalysisResults(null);
+        setDownloadReady(false);
+    };
 
-  const handleDownload = async (groupId) => {
-    try {
-      await downloadDuplicateReport(groupId);
-      toast.success('Report downloaded successfully');
-    } catch (error) {
-      console.error('Download error:', error);
-      toast.error('Failed to download report');
-    }
-  };
+    const handleScan = async () => {
+        if (selectedFiles.length === 0) {
+            setError('Please select at least one file to scan');
+            return;
+        }
 
-  const filteredDuplicates = duplicates.filter(group =>
-    group.files.some(file => 
-      file.fileName.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  );
+        setLoading(true);
+        setError(null);
+        
+        try {
+            // Process each file sequentially to avoid overwhelming the server
+            const results = [];
+            for (const file of selectedFiles) {
+                const result = await scanForDuplicates(confidence / 100, file);
+                results.push(result);
+            }
+            
+            setAnalysisResults(results);
+            setDownloadReady(true);
+        } catch (err) {
+            console.error('Error scanning files:', err);
+            setError(err.message || 'Error scanning for duplicates');
+        } finally {
+            setLoading(false);
+        }
+    };
 
-  return (
-    <div className="max-w-[1400px] mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Duplicate Detection</h1>
-          <p className="text-sm text-gray-600 mt-1">Manage and resolve duplicate datasets</p>
-        </div>
-      </div>
+    const handleDownload = async () => {
+        if (!analysisResults || analysisResults.length === 0) {
+            setError('No analysis results available for download');
+            return;
+        }
+        
+        try {
+            setLoading(true);
+            await downloadDuplicateReport(analysisResults[0].recordId);
+            setLoading(false);
+        } catch (err) {
+            console.error('Error downloading report:', err);
+            setError(err.message || 'Error downloading duplicate report');
+            setLoading(false);
+        }
+    };
 
-      <div className="bg-white rounded-lg shadow-sm p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Search duplicates..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">Confidence:</span>
-            <input
-              type="number"
-              value={confidence}
-              onChange={(e) => setConfidence(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
-              className="w-20 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <span className="text-sm text-gray-600">%</span>
-          </div>
+    return (
+        <div className="p-6">
+            <h1 className="text-2xl font-bold mb-6">Duplicate Detection</h1>
+            
+            <div className="mb-6">
+                <h2 className="text-lg font-semibold mb-3">Select Files to Scan</h2>
+                <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700">
+                        <FiUpload />
+                        Choose Files
+                        <input
+                            type="file"
+                            className="hidden"
+                            multiple
+                            accept=".csv,.xlsx,.xls,.json"
+                            onChange={handleFileSelect}
+                        />
+                    </label>
+                    {selectedFiles.length > 0 && (
+                        <span className="text-gray-600">
+                            {selectedFiles.length} file(s) selected
+                        </span>
+                    )}
+                </div>
+                
+                {selectedFiles.length > 0 && (
+                    <div className="mt-3">
+                        <ul className="text-sm text-gray-600">
+                            {selectedFiles.map((file, index) => (
+                                <li key={index}>{file.name}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+            </div>
 
-          <button
-            onClick={handleScan}
-            disabled={isScanning}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors disabled:bg-blue-300"
-          >
-            <FiSearch className="w-5 h-5" />
-            {isScanning ? 'Scanning...' : 'Scan for Duplicates'}
-          </button>
-        </div>
+            <div className="mb-6">
+                <h2 className="text-lg font-semibold mb-3">Confidence Threshold (%)</h2>
+                <input
+                    type="number"
+                    value={confidence}
+                    onChange={(e) => setConfidence(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                    className="w-24 px-3 py-2 border rounded"
+                    min="0"
+                    max="100"
+                />
+            </div>
 
-        {loading ? (
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="text-gray-600 mt-2">Loading results...</p>
-          </div>
-        ) : filteredDuplicates.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            {searchQuery ? 'No matching duplicates found' : 'No duplicates found. Try scanning with a different confidence level.'}
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {filteredDuplicates.map((group, groupIndex) => (
-              <div key={groupIndex} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">
-                    Duplicate Group #{groupIndex + 1}
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">
-                      Match Confidence: {(group.confidence * 100).toFixed(1)}%
-                    </span>
+            <div className="flex gap-4 mb-6">
+                <button
+                    onClick={handleScan}
+                    disabled={loading || selectedFiles.length === 0}
+                    className={`px-4 py-2 rounded-lg ${
+                        loading || selectedFiles.length === 0
+                            ? 'bg-gray-400 cursor-not-allowed'
+                            : 'bg-blue-600 hover:bg-blue-700'
+                    } text-white`}
+                >
+                    {loading ? 'Scanning...' : 'Scan for Duplicates'}
+                </button>
+
+                {downloadReady && !loading && (
                     <button
-                      onClick={() => handleDownload(group.id)}
-                      className="flex items-center gap-1 text-blue-600 hover:text-blue-800"
+                        onClick={handleDownload}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
                     >
-                      <FiDownload className="w-4 h-4" />
-                      Download Report
+                        Download Duplicates
                     </button>
-                  </div>
-                </div>
+                )}
+            </div>
 
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead>
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">File Name</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Upload Date</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Matched Fields</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {group.files.map((file, fileIndex) => (
-                        <tr key={fileIndex}>
-                          <td className="px-4 py-2 text-sm text-gray-900">{file.fileName}</td>
-                          <td className="px-4 py-2 text-sm text-gray-600">{file.department}</td>
-                          <td className="px-4 py-2 text-sm text-gray-600">
-                            {new Date(file.uploadedAt).toLocaleString()}
-                          </td>
-                          <td className="px-4 py-2">
-                            <div className="flex flex-wrap gap-1">
-                              {file.matchedFields.map((field, fieldIndex) => (
-                                <span
-                                  key={fieldIndex}
-                                  className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800"
-                                  title={`Similarity: ${(field.similarity * 100).toFixed(1)}%`}
-                                >
-                                  {field.fieldName}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            {error && (
+                <div className="p-4 bg-red-100 text-red-700 rounded-lg mb-6">
+                    {error}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+            )}
+
+            {analysisResults && (
+                <div className="mt-6">
+                    <h2 className="text-lg font-semibold mb-3">Analysis Results</h2>
+                    {analysisResults.map((result, index) => (
+                        <div key={index} className="p-4 bg-gray-50 rounded-lg mb-4">
+                            <h3 className="font-semibold">{result.fileName}</h3>
+                            <p>Status: {result.status || 'Processing'}</p>
+                            {result.message && <p>{result.message}</p>}
+                            {result.duplicates && (
+                                <p>Found {result.duplicates.length} duplicate groups</p>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
 };
 
 export default DuplicateDetection; 

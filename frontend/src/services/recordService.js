@@ -28,19 +28,28 @@ export const getAllRecords = async () => {
     // Map the records to ensure all fields are properly displayed
     const processedRecords = records.map(record => {
       console.log('Processing record:', record);
+      
+      // Get the file extension from fileName or originalName
+      const fileName = record.fileName || record.originalName;
+      const fileType = fileName 
+        ? fileName.split('.').pop().toUpperCase()
+        : record.fileType?.toUpperCase() || 'Unknown';
+
       return {
         _id: record._id,
-        fileName: record.originalName || record.fileName || 'Unnamed File',
-        fileType: record.fileType || 'Unknown',
+        fileName: record.fileName || record.originalName,
+        originalName: record.originalName || record.fileName,
+        fileType: fileType,
         fileSize: parseInt(record.fileSize) || 0,
         department: record.department || 'Unspecified',
         description: record.description || '',
-        tags: record.tags || [],
+        tags: Array.isArray(record.tags) ? record.tags : [],
         uploadedAt: record.uploadedAt || record.createdAt || new Date().toISOString(),
         duplicateAnalysis: {
           status: record.duplicateAnalysis?.status || 'pending',
           duplicatesCount: record.duplicateAnalysis?.duplicatesCount || 0,
-          lastAnalyzedAt: record.duplicateAnalysis?.lastAnalyzedAt
+          lastAnalyzedAt: record.duplicateAnalysis?.lastAnalyzedAt,
+          duplicates: record.duplicateAnalysis?.duplicates || []
         }
       };
     });
@@ -56,33 +65,19 @@ export const getAllRecords = async () => {
   }
 };
 
-export const uploadFile = async (file, department, description = '', tags = []) => {
-  const formData = new FormData();
-  
-  // Add file metadata
-  formData.append('file', file);
-  formData.append('department', department);
-  formData.append('description', description);
-  formData.append('tags', JSON.stringify(tags));
-
-  console.log('Preparing to upload file:', {
-    fileName: file.name,
-    fileSize: file.size,
-    fileType: file.type,
-    department,
-    description,
-    tags
-  });
-
+export const uploadFile = async (formData) => {
   try {
+    console.log('Uploading file with formData:', {
+      fileName: formData.get('fileName'),
+      department: formData.get('department'),
+      description: formData.get('description'),
+      tags: formData.get('tags')
+    });
+
     const response = await axios.post(API_ENDPOINTS.UPLOAD, formData, {
       headers: {
         ...getAuthHeaders(),
         'Content-Type': 'multipart/form-data'
-      },
-      onUploadProgress: (progressEvent) => {
-        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-        console.log(`Upload progress: ${percentCompleted}%`);
       }
     });
     
@@ -92,22 +87,22 @@ export const uploadFile = async (file, department, description = '', tags = []) 
       throw new Error(response.data.message || 'Upload failed');
     }
 
-    const recordData = response.data.data;
+    const recordData = response.data.record || response.data.data;
     
     // Return the record data with all necessary fields
     return {
-      _id: recordData.id || recordData.recordId,
-      fileName: file.name,
-      originalName: file.name,
-      fileType: file.type,
-      fileSize: file.size,
-      department: department,
-      description: description,
-      tags: tags,
-      uploadedAt: new Date().toISOString(),
+      _id: recordData._id,
+      fileName: recordData.fileName || formData.get('fileName'),
+      originalName: recordData.originalName || formData.get('originalName'),
+      fileType: recordData.fileType || formData.get('fileType'),
+      fileSize: recordData.fileSize || formData.get('fileSize'),
+      department: recordData.department || formData.get('department'),
+      description: recordData.description || formData.get('description'),
+      tags: recordData.tags || JSON.parse(formData.get('tags') || '[]'),
+      uploadedAt: recordData.uploadedAt || recordData.createdAt || new Date().toISOString(),
       duplicateAnalysis: {
         status: recordData.duplicateAnalysis?.status || 'processing',
-        duplicatesCount: 0,
+        duplicatesCount: recordData.duplicateAnalysis?.duplicatesCount || 0,
         lastAnalyzedAt: recordData.duplicateAnalysis?.lastAnalyzedAt
       }
     };

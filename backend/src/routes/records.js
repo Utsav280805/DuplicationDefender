@@ -178,17 +178,23 @@ router.get('/', auth, async (req, res) => {
       success: true,
       records: records.map(record => ({
         _id: record._id,
-        fileName: record.originalName || record.fileName,
+        fileName: record.fileName,
+        originalName: record.originalName,
         fileType: record.fileType,
         fileSize: record.fileSize,
         department: record.department,
-        description: record.description,
-        tags: record.tags,
-        uploadedAt: record.uploadedAt,
+        description: record.description || '',
+        tags: record.tags || [],
+        uploadedAt: record.uploadedAt || record.createdAt,
         duplicateAnalysis: {
           status: record.duplicateAnalysis?.status || 'pending',
           duplicatesCount: record.duplicateAnalysis?.duplicates?.length || 0,
           lastAnalyzedAt: record.duplicateAnalysis?.lastAnalyzedAt
+        },
+        fileContent: {
+          rowCount: record.fileContent?.rowCount || 0,
+          columnCount: record.fileContent?.columnCount || 0,
+          headers: record.fileContent?.headers || []
         }
       }))
     });
@@ -211,6 +217,11 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
       });
     }
 
+    console.log('File upload request:', {
+      file: req.file,
+      body: req.body
+    });
+
     // Validate required fields
     if (!req.body.department) {
       await fsPromises.unlink(req.file.path);
@@ -223,9 +234,9 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
     // Parse file contents
     const fileContent = await parseFileContents(req.file.path, req.file.mimetype);
 
-    // Create record
+    // Create record with proper metadata
     const record = new Record({
-      fileName: req.file.filename,
+      fileName: req.file.originalname, // Use original name as fileName
       originalName: req.file.originalname,
       fileType: req.file.mimetype.includes('csv') ? 'CSV' : 
                 req.file.mimetype.includes('spreadsheetml') ? 'XLSX' : 'XLS',
@@ -248,8 +259,30 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
       }
     });
 
+    // Save the record
     await record.save();
-    console.log('Record saved successfully:', record._id);
+    console.log('Saved record:', record);
+
+    // Return the record data
+    res.json({
+      success: true,
+      record: {
+        _id: record._id,
+        fileName: record.fileName,
+        originalName: record.originalName,
+        fileType: record.fileType,
+        fileSize: record.fileSize,
+        department: record.department,
+        description: record.description,
+        tags: record.tags,
+        uploadedAt: record.uploadedAt,
+        duplicateAnalysis: {
+          status: record.duplicateAnalysis.status,
+          duplicatesCount: 0,
+          lastAnalyzedAt: record.duplicateAnalysis.lastAnalyzedAt
+        }
+      }
+    });
 
     // Start duplicate analysis in background
     findDuplicates(fileContent, req.user.id)
@@ -271,28 +304,6 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
         };
         await record.save();
       });
-
-    // Send immediate response with record ID and status
-    res.status(201).json({
-      success: true,
-      message: 'File uploaded successfully and being analyzed for duplicates',
-      data: {
-        id: record._id,
-        recordId: record._id,
-        fileName: record.originalName,
-        fileSize: record.fileSize,
-        department: record.department,
-        duplicateAnalysis: {
-          status: 'processing',
-          lastAnalyzedAt: record.duplicateAnalysis.lastAnalyzedAt
-        },
-        fileContent: {
-          rowCount: fileContent.rowCount,
-          columnCount: fileContent.columnCount,
-          headers: fileContent.headers
-        }
-      }
-    });
   } catch (error) {
     console.error('Upload error:', error);
     

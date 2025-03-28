@@ -1,33 +1,141 @@
 import React, { useState } from 'react';
 import { FiUpload } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import { uploadFile } from '../services/recordService';
+
+const departments = [
+  'HR',
+  'Finance',
+  'Marketing',
+  'Sales',
+  'IT',
+  'Operations',
+  'Legal',
+  'Research & Development',
+  'Customer Service',
+  'Product Management',
+  'Quality Assurance',
+  'Administration'
+];
 
 const UploadDataset = () => {
   const [files, setFiles] = useState([]);
   const [department, setDepartment] = useState('');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = React.useRef(null);
+  const navigate = useNavigate();
 
   const handleFileUpload = (e) => {
     const uploadedFiles = Array.from(e.target.files);
     setFiles(uploadedFiles);
   };
 
-  const handleSubmit = (e) => {
+  const handleDragOver = (e) => {
     e.preventDefault();
-    // Handle form submission
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    const validFiles = droppedFiles.filter(file => {
+      const ext = file.name.toLowerCase().split('.').pop();
+      return ['csv', 'xls', 'xlsx'].includes(ext);
+    });
+    if (validFiles.length > 0) {
+      setFiles(validFiles);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!department || files.length === 0) return;
+
+    setIsUploading(true);
+    const uploadPromises = [];
+    const errors = [];
+
+    try {
+      // Upload each file individually
+      for (const file of files) {
+        try {
+          // Create FormData for each file
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('fileName', file.name);
+          formData.append('originalName', file.name);
+          formData.append('fileType', file.type);
+          formData.append('fileSize', file.size);
+          formData.append('department', department);
+          formData.append('description', description || '');
+          formData.append('tags', JSON.stringify(tags ? tags.split(',').map(tag => tag.trim()) : []));
+
+          console.log('Uploading file with data:', {
+            fileName: file.name,
+            department,
+            description,
+            tags: tags ? tags.split(',').map(tag => tag.trim()) : []
+          });
+
+          const uploadPromise = uploadFile(formData);
+          uploadPromises.push(uploadPromise);
+        } catch (error) {
+          errors.push(`Failed to upload ${file.name}: ${error.message}`);
+        }
+      }
+
+      // Wait for all uploads to complete
+      const results = await Promise.allSettled(uploadPromises);
+      
+      // Check results
+      const successCount = results.filter(result => result.status === 'fulfilled').length;
+      const failureCount = results.filter(result => result.status === 'rejected').length;
+
+      if (successCount > 0) {
+        toast.success(`Successfully uploaded ${successCount} file${successCount > 1 ? 's' : ''}`);
+        
+        // Reset form
+        setFiles([]);
+        setDepartment('');
+        setDescription('');
+        setTags('');
+        
+        // Navigate to records page with refresh flag
+        navigate('/records', { 
+          state: { 
+            refresh: true,
+            timestamp: Date.now()
+          }
+        });
+      }
+
+      if (failureCount > 0) {
+        toast.error(`Failed to upload ${failureCount} file${failureCount > 1 ? 's' : ''}`);
+      }
+
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error(error.message || 'Failed to upload files. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <div className="flex items-center gap-3 mb-8">
-        <FiUpload className="w-6 h-6 text-blue-600" />
-        <h1 className="text-2xl font-semibold">Upload Dataset</h1>
-      </div>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl w-full space-y-8">
+        <div className="flex items-center justify-center gap-3">
+          <FiUpload className="w-8 h-8 text-blue-600" />
+          <h1 className="text-3xl font-semibold text-gray-900">Upload Dataset</h1>
+        </div>
 
-      <div className="bg-white rounded-lg p-6">
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-6">
-            <div className="grid grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl shadow-sm p-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Department */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -39,10 +147,9 @@ const UploadDataset = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">Select Department</option>
-                  <option value="HR">HR</option>
-                  <option value="Finance">Finance</option>
-                  <option value="Marketing">Marketing</option>
-                  <option value="Sales">Sales</option>
+                  {departments.map((dept) => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
                 </select>
               </div>
 
@@ -71,7 +178,7 @@ const UploadDataset = () => {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Enter a description for your dataset..."
                 rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
               />
             </div>
 
@@ -81,10 +188,13 @@ const UploadDataset = () => {
                 Files
               </label>
               <div 
-                className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors cursor-pointer"
-                onClick={() => document.querySelector('input[type="file"]').click()}
+                className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition-colors cursor-pointer bg-gray-50"
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
               >
                 <input
+                  ref={fileInputRef}
                   type="file"
                   multiple
                   accept=".csv,.xls,.xlsx"
@@ -92,8 +202,8 @@ const UploadDataset = () => {
                   className="hidden"
                 />
                 <div className="flex flex-col items-center">
-                  <FiUpload className="w-10 h-10 text-gray-400 mb-3" />
-                  <p className="text-blue-600 mb-1">Upload files or drag and drop</p>
+                  <FiUpload className="w-12 h-12 text-gray-400 mb-3" />
+                  <p className="text-blue-600 font-medium mb-1">Click to upload or drag and drop</p>
                   <p className="text-sm text-gray-500">CSV, XLS, XLSX up to 10MB</p>
                 </div>
               </div>
@@ -102,35 +212,27 @@ const UploadDataset = () => {
             {/* Uploaded Files List */}
             {files.length > 0 && (
               <div className="mt-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Uploaded Files</h3>
-                <div className="bg-white rounded-lg border border-gray-200">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Selected Files</h3>
+                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">File Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duplicates</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Upload Date</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Size</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {files.map((file, index) => (
                         <tr key={index}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{file.name}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Unspecified</td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">
-                              pending
-                            </span>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {(file.size / 1024 / 1024).toFixed(2)} MB
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-                              0
+                              {file.name.split('.').pop().toUpperCase()}
                             </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {new Date().toLocaleString()}
                           </td>
                         </tr>
                       ))}
@@ -144,17 +246,27 @@ const UploadDataset = () => {
             <div>
               <button
                 type="submit"
-                disabled={!department}
-                className={`flex items-center justify-center w-full px-4 py-2 rounded-md text-white transition-colors ${
-                  department ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-300 cursor-not-allowed'
+                disabled={!department || files.length === 0 || isUploading}
+                className={`flex items-center justify-center w-full px-4 py-3 rounded-md text-white transition-colors ${
+                  department && files.length > 0 && !isUploading
+                    ? 'bg-blue-600 hover:bg-blue-700'
+                    : 'bg-blue-300 cursor-not-allowed'
                 }`}
               >
                 <FiUpload className="w-5 h-5 mr-2" />
-                Please Select Department
+                {isUploading ? (
+                  'Uploading...'
+                ) : !department ? (
+                  'Please Select Department'
+                ) : files.length === 0 ? (
+                  'Please Select Files'
+                ) : (
+                  `Upload ${files.length} File${files.length > 1 ? 's' : ''}`
+                )}
               </button>
             </div>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );

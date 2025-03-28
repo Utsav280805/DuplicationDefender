@@ -8,6 +8,8 @@ const fs = require('fs');
 const cookieParser = require('cookie-parser');
 
 // Debug environment variables
+console.log(process.env.MONGO_URI); // Should print the MongoDB URI
+
 console.log('Environment variables loaded:', {
   MONGO_URI: process.env.MONGO_URI ? 'Present' : 'Missing',
   PORT: process.env.PORT,

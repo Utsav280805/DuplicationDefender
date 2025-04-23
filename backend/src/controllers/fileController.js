@@ -2,7 +2,8 @@ const path = require('path');
 const fs = require('fs').promises;
 const File = require('../models/File');
 const DownloadHistory = require('../models/DownloadHistory');
-const duplicateCheck = require('../../utils/duplicateCheck');
+const { checkForDuplicates } = require('../../utils/duplicateCheck');
+const mongoose = require('mongoose');
 
 /**
  * @typedef {import('../../utils/duplicateCheck').DuplicateResult} DuplicateResult
@@ -33,148 +34,268 @@ const createDirectoryIfNotExists = async (dirPath) => {
   }
 };
 
+// Helper function to detect file type
+const detectFileType = (filename) => {
+  const extension = path.extname(filename).toLowerCase();
+  switch (extension) {
+    case '.csv':
+      return 'csv';
+    case '.xlsx':
+      return 'xlsx';
+    case '.json':
+      return 'json';
+    case '.css':
+      return 'css';
+    case '.dfg':
+      return 'dfg';
+    case '.kn':
+      return 'kn';
+    default:
+      return 'unknown';
+  }
+};
+
+// Helper function to send progress update
+const sendProgress = (uploadId, progress) => {
+  const clients = progressClients.get(uploadId) || [];
+  const data = JSON.stringify({ type: 'progress', progress });
+  
+  clients.forEach(client => {
+    client.write(`data: ${data}\n\n`);
+  });
+};
+
+// Store SSE clients
+const progressClients = new Map();
+
+// SSE endpoint for progress updates
+const uploadProgress = (req, res) => {
+  const { uploadId } = req.params;
+  
+  // Set SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  });
+
+  // Send initial connection message
+  res.write(`data: ${JSON.stringify({ type: 'connected', uploadId })}\n\n`);
+
+  // Store the client connection
+  const clients = progressClients.get(uploadId) || [];
+  clients.push(res);
+  progressClients.set(uploadId, clients);
+
+  // Handle client disconnect
+  req.on('close', () => {
+    const clients = progressClients.get(uploadId) || [];
+    const index = clients.indexOf(res);
+    if (index !== -1) {
+      clients.splice(index, 1);
+      if (clients.length === 0) {
+        progressClients.delete(uploadId);
+      } else {
+        progressClients.set(uploadId, clients);
+      }
+    }
+  });
+};
+
+// Helper function to send console log
+const sendConsoleLog = (uploadId, message) => {
+  const clients = progressClients.get(uploadId) || [];
+  const data = JSON.stringify({ 
+    type: 'console', 
+    message: typeof message === 'object' ? JSON.stringify(message, null, 2) : message 
+  });
+  
+  clients.forEach(client => {
+    client.write(`data: ${data}\n\n`);
+  });
+};
+
+// Override console.log for file upload process
+const wrapConsoleLog = (uploadId) => {
+  const originalLog = console.log;
+  console.log = (...args) => {
+    const message = args.map(arg => 
+      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg
+    ).join(' ');
+    originalLog.apply(console, args);
+    if (uploadId) {
+      sendConsoleLog(uploadId, message);
+    }
+  };
+  return () => {
+    console.log = originalLog;
+  };
+};
+
 // Upload file
 const uploadFile = async (req, res) => {
+  const uploadId = req.body.uploadId;
+  const restoreConsole = wrapConsoleLog(uploadId);
+  
   try {
-    console.log('File upload request received:', {
-      filename: req.file?.originalname,
-      size: req.file?.size,
-      mimetype: req.file?.mimetype,
-      tempPath: req.file?.path
-    });
-
+    console.log('Starting file upload and analysis process...');
+    
     if (!req.file) {
+      console.log('No file uploaded');
       return res.status(400).json({
         success: false,
         message: 'No file uploaded'
       });
     }
 
-    const uploadsDir = path.join(__dirname, '../../uploads');
-    console.log('Ensuring uploads directory exists:', uploadsDir);
-    await createDirectoryIfNotExists(uploadsDir);
+    const fileType = detectFileType(req.file.originalname);
+    console.log('Detected file type:', fileType);
 
-    // Move file from temp to permanent location
-    const permanentPath = path.join(uploadsDir, req.file.filename);
-    await fs.rename(req.file.path, permanentPath);
-    console.log('File moved to permanent location:', permanentPath);
+    // Only check for duplicates in CSV and Excel files
+    let duplicateResults = {
+      hasDuplicates: false,
+      duplicates: []
+    };
+
+    if (fileType === 'csv' || fileType === 'xlsx') {
+      console.log('Starting duplicate analysis for file:', req.file.originalname);
+      
+      // Read file data
+      const data = fileType === 'csv' ? readCSVFile(req.file.path) : readExcelFile(req.file.path);
+      const totalRecords = data.length;
+
+      console.log(`Processing ${totalRecords} records for duplicates...`);
+
+      // Process records in batches and track progress
+      const duplicates = [];
+      const threshold = 90;
+      let processedRecords = 0;
+
+      for (let i = 0; i < data.length; i++) {
+        for (let j = i + 1; j < data.length; j++) {
+          const similarity = compareRecords(data[i], data[j]);
+          if (similarity >= threshold) {
+            duplicates.push({
+              record1: data[i],
+              record2: data[j],
+              similarity: Math.round(similarity),
+              rowNumber1: i + 1,
+              rowNumber2: j + 1
+            });
+          }
+        }
+
+        processedRecords++;
+        
+        // Log progress every 12 records or ~5%
+        if (processedRecords % 12 === 0 || processedRecords === data.length) {
+          const progress = (processedRecords / totalRecords) * 100;
+          console.log(`Progress: ${progress.toFixed(1)}% (${processedRecords}/${totalRecords} records)`);
+        }
+      }
+
+      duplicateResults = {
+        hasDuplicates: duplicates.length > 0,
+        duplicates
+      };
+
+      console.log(`Duplicate detection completed. Found ${duplicates.length} potential duplicates.`);
+      console.log(`Analysis completed: { totalRecords: ${totalRecords}, duplicatesFound: ${duplicates.length} }`);
+      
+      // Add detailed duplicate reporting
+      if (duplicates.length > 0) {
+        console.log('\nDetailed Duplicate Analysis:');
+        console.log('------------------------');
+        duplicates.forEach((dup, index) => {
+          console.log(`\nDuplicate Pair ${index + 1}:`);
+          console.log(`Similarity: ${dup.similarity}%`);
+          console.log('Record 1 (Row ${dup.rowNumber1}):');
+          console.log(JSON.stringify(dup.record1, null, 2));
+          console.log('Record 2 (Row ${dup.rowNumber2}):');
+          console.log(JSON.stringify(dup.record2, null, 2));
+          console.log('------------------------');
+        });
+      }
+    }
 
     // Create file record in database
     const file = new File({
-      originalName: req.file.originalname,
-      fileName: req.file.filename,
-      mimeType: req.file.mimetype,
+      userId: req.user.id,
+      filename: req.file.originalname,
+      path: req.file.path,
       size: req.file.size,
-      path: permanentPath,
-      userId: req.user._id,
-      department: req.body.department || 'General',
+      mimetype: req.file.mimetype,
+      fileType: fileType,
       description: req.body.description || '',
-      tags: req.body.tags ? req.body.tags.split(',') : [],
-      status: 'Active'
+      tags: req.body.tags ? req.body.tags.split(',').map(tag => tag.trim()) : [],
+      duplicates: {
+        hasDuplicates: duplicateResults.hasDuplicates,
+        duplicatePairs: duplicateResults.duplicates.map(dup => ({
+          original: JSON.stringify(dup.record1),
+          duplicate: JSON.stringify(dup.record2),
+          confidence: dup.similarity
+        }))
+      }
     });
 
     await file.save();
-    console.log('File record created in database:', file._id);
 
-    res.status(201).json({
+    return res.status(200).json({
       success: true,
-      message: 'File uploaded successfully',
+      message: 'File uploaded and analyzed successfully',
       file: {
         id: file._id,
-        originalName: file.originalName,
-        fileName: file.fileName,
+        filename: file.filename,
+        fileType: file.fileType,
         size: file.size,
-        createdAt: file.createdAt
+        uploadDate: file.uploadDate,
+        description: file.description,
+        tags: file.tags,
+        duplicates: file.duplicates
       }
     });
+
   } catch (error) {
-    console.error('Error in file upload:', error);
-    res.status(500).json({
+    console.error('Error in file upload and analysis:', error);
+
+    if (req.file && req.file.path) {
+      try {
+        await fs.unlink(req.file.path);
+        console.log('Cleaned up temporary file:', req.file.path);
+      } catch (unlinkError) {
+        console.error('Error deleting temp file:', unlinkError);
+      }
+    }
+
+    return res.status(500).json({
       success: false,
       message: 'Error uploading file',
       error: error.message
     });
-  }
-};
-
-// Check for duplicates
-const checkForDuplicatesHandler = async (req, res) => {
-  console.log('Starting duplicate check process');
-  try {
-    if (!req.file) {
-      console.log('No file received in request');
-      return res.status(400).json({
-        success: false,
-        message: 'No file uploaded'
-      });
-    }
-
-    console.log('Analyzing file for duplicates:', {
-      filename: req.file.originalname,
-      path: req.file.path,
-      size: req.file.size
-    });
-
-    /** @type {DuplicateResult} */
-    const results = await duplicateCheck.checkForDuplicates(req.file.path);
-    
-    console.log('Duplicate check completed:', {
-      hasDuplicates: results.hasDuplicates,
-      totalRecords: results.totalRecords,
-      duplicatePairs: results.duplicates?.length || 0
-    });
-    
-    // Delete the temporary file after analysis
-    try {
-      await fs.unlink(req.file.path);
-      console.log('Temporary file deleted:', req.file.path);
-    } catch (error) {
-      console.error('Error deleting temporary file:', error);
-    }
-
-    res.json({
-      success: true,
-      hasDuplicates: results.hasDuplicates,
-      totalRecords: results.totalRecords,
-      duplicatePairs: results.duplicates?.length || 0
-    });
-  } catch (error) {
-    console.error('Error checking duplicates:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error checking for duplicates',
-      error: error.message
-    });
+  } finally {
+    restoreConsole();
   }
 };
 
 // List all files
 const listFiles = async (req, res) => {
   try {
-    const files = await File.find({ 
-      userId: req.user._id,
-      isDeleted: false 
-    })
-    .select('originalName fileName size createdAt department description tags status')
-    .sort({ createdAt: -1 });
-
-    // Transform the files to match the frontend expectations
-    const transformedFiles = files.map(file => ({
-      _id: file._id,
-      name: file.originalName,
-      fileName: file.fileName,
-      size: file.size,
-      createdAt: file.createdAt,
-      department: file.department || 'General',
-      description: file.description || '',
-      tags: file.tags || [],
-      fileType: file.originalName.split('.').pop().toLowerCase(),
-      status: file.status || 'Active'
-    }));
-
+    const userId = req.user.id || req.user._id;
+    const files = await File.find({ userId: userId, isDeleted: false }).sort({ uploadDate: -1 });
+    
     res.json({
       success: true,
-      files: transformedFiles
+      files: files.map(file => ({
+        id: file._id,
+        filename: file.filename,
+        fileType: file.fileType,
+        size: file.size,
+        uploadDate: file.uploadDate,
+        description: file.description,
+        tags: file.tags,
+        duplicates: file.duplicates
+      }))
     });
   } catch (error) {
     console.error('Error listing files:', error);
@@ -189,12 +310,9 @@ const listFiles = async (req, res) => {
 // Get file by ID
 const getFileById = async (req, res) => {
   try {
-    const file = await File.findOne({
-      _id: req.params.id,
-      userId: req.user._id,
-      isDeleted: false
-    });
-
+    const userId = req.user.id || req.user._id;
+    const file = await File.findOne({ _id: req.params.id, userId: userId });
+    
     if (!file) {
       return res.status(404).json({
         success: false,
@@ -202,11 +320,66 @@ const getFileById = async (req, res) => {
       });
     }
 
-    res.json({
+    // Re-analyze file for duplicates if it's a CSV or Excel file
+    if ((file.fileType === 'csv' || file.fileType === 'xlsx') && file.path) {
+      console.log('Re-analyzing file for duplicates:', file.filename);
+      const data = file.fileType === 'csv' ? readCSVFile(file.path) : readExcelFile(file.path);
+      
+      if (data && data.length > 0) {
+        console.log(`Processing ${data.length} records for duplicates...`);
+        const duplicates = [];
+        const threshold = 90;
+
+        for (let i = 0; i < data.length; i++) {
+          for (let j = i + 1; j < data.length; j++) {
+            const similarity = compareRecords(data[i], data[j]);
+            if (similarity >= threshold) {
+              duplicates.push({
+                record1: data[i],
+                record2: data[j],
+                similarity: Math.round(similarity),
+                rowNumber1: i + 1,
+                rowNumber2: j + 1
+              });
+            }
+          }
+        }
+
+        // Update file with new duplicate information
+        file.duplicates = {
+          hasDuplicates: duplicates.length > 0,
+          duplicatePairs: duplicates.map(dup => ({
+            original: JSON.stringify(dup.record1),
+            duplicate: JSON.stringify(dup.record2),
+            confidence: dup.similarity,
+            rowNumber1: dup.rowNumber1,
+            rowNumber2: dup.rowNumber2
+          }))
+        };
+        await file.save();
+        
+        console.log(`Found ${duplicates.length} duplicates in file`);
+      }
+    }
+
+    const response = {
       success: true,
-      file
-    });
+      file: {
+        id: file._id,
+        filename: file.filename,
+        fileType: file.fileType,
+        size: file.size,
+        uploadDate: file.uploadDate,
+        description: file.description,
+        tags: file.tags,
+        duplicates: file.duplicates
+      }
+    };
+
+    console.log('Sending response:', JSON.stringify(response, null, 2));
+    res.json(response);
   } catch (error) {
+    console.error('Error getting file:', error);
     res.status(500).json({
       success: false,
       message: 'Error retrieving file',
@@ -218,11 +391,8 @@ const getFileById = async (req, res) => {
 // Download file
 const downloadFile = async (req, res) => {
   try {
-    const file = await File.findOne({
-      _id: req.params.id,
-      userId: req.user._id,
-      isDeleted: false
-    });
+    const userId = req.user.id || req.user._id;
+    const file = await File.findOne({ _id: req.params.id, userId: userId });
 
     if (!file) {
       return res.status(404).json({
@@ -234,15 +404,16 @@ const downloadFile = async (req, res) => {
     // Record download history
     const downloadHistory = new DownloadHistory({
       fileId: file._id,
-      userId: req.user._id
+      userId: userId
     });
     await downloadHistory.save();
 
     // Update download count
     file.downloadCount += 1;
+    file.lastAccessed = new Date();
     await file.save();
 
-    res.download(file.path, file.originalName, (err) => {
+    res.download(file.path, file.filename, (err) => {
       if (err) {
         console.error('Error downloading file:', err);
         res.status(500).json({
@@ -264,12 +435,9 @@ const downloadFile = async (req, res) => {
 // Delete file
 const deleteFile = async (req, res) => {
   try {
-    const file = await File.findOne({
-      _id: req.params.id,
-      userId: req.user._id,
-      isDeleted: false
-    });
-
+    const userId = req.user.id || req.user._id;
+    const file = await File.findOne({ _id: req.params.id, userId: userId });
+    
     if (!file) {
       return res.status(404).json({
         success: false,
@@ -277,16 +445,22 @@ const deleteFile = async (req, res) => {
       });
     }
 
-    // Soft delete the file
-    file.isDeleted = true;
-    file.deletedAt = new Date();
-    await file.save();
+    // Delete file from filesystem
+    try {
+      await fs.unlink(file.path);
+    } catch (unlinkError) {
+      console.error('Error deleting file from filesystem:', unlinkError);
+    }
+
+    // Delete file record from database
+    await file.deleteOne();
 
     res.json({
       success: true,
       message: 'File deleted successfully'
     });
   } catch (error) {
+    console.error('Error deleting file:', error);
     res.status(500).json({
       success: false,
       message: 'Error deleting file',
@@ -295,12 +469,92 @@ const deleteFile = async (req, res) => {
   }
 };
 
+// Check for duplicates
+const checkForDuplicatesHandler = async (req, res) => {
+  console.log('Starting duplicate check process');
+  try {
+    if (!req.file) {
+      console.log('No file received in request');
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const fileType = detectFileType(req.file.originalname);
+    console.log('File type:', fileType);
+    
+    if (fileType !== 'csv' && fileType !== 'xlsx') {
+      console.log('Invalid file type for duplicate analysis:', fileType);
+      return res.status(400).json({
+        success: false,
+        message: 'Only CSV and Excel files can be analyzed for duplicates'
+      });
+    }
+
+    console.log('Starting duplicate analysis for file:', req.file.originalname);
+    const results = await checkForDuplicates(req.file.path);
+    
+    console.log('Duplicate analysis completed:', {
+      hasDuplicates: results.hasDuplicates,
+      totalRecords: results.totalRecords,
+      duplicatesFound: results.duplicates.length
+    });
+
+    // If this is for an existing file, update its duplicate information
+    if (req.params.id) {
+      console.log('Updating existing file record:', req.params.id);
+      const file = await File.findById(req.params.id);
+      if (file) {
+        file.duplicates = {
+          hasDuplicates: results.hasDuplicates,
+          duplicatePairs: results.duplicates.map(dup => ({
+            original: JSON.stringify(dup.record1),
+            duplicate: JSON.stringify(dup.record2),
+            confidence: dup.similarity
+          }))
+        };
+        await file.save();
+        console.log('File record updated with new duplicate information');
+      }
+    }
+    
+    // Delete the temporary file after analysis
+    try {
+      await fs.unlink(req.file.path);
+      console.log('Temporary file deleted:', req.file.path);
+    } catch (error) {
+      console.error('Error deleting temporary file:', error);
+    }
+
+    console.log('Sending duplicate analysis results to client');
+    res.json({
+      success: true,
+      hasDuplicates: results.hasDuplicates,
+      totalRecords: results.totalRecords,
+      duplicates: results.duplicates.map(dup => ({
+        original: JSON.stringify(dup.record1),
+        duplicate: JSON.stringify(dup.record2),
+        confidence: dup.similarity
+      }))
+    });
+  } catch (error) {
+    console.error('Error checking duplicates:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking for duplicates',
+      error: error.message
+    });
+  }
+};
+
 // Export all controller functions
 module.exports = {
   uploadFile,
-  checkForDuplicatesHandler,
   listFiles,
   getFileById,
   downloadFile,
-  deleteFile
+  deleteFile,
+  checkForDuplicatesHandler,
+  uploadProgress
 };

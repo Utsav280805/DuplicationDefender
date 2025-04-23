@@ -1,163 +1,185 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Search, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { datasetService } from '../services/datasetService';
+import { toast } from '../components/ui/use-toast';
 
 const Duplicates = () => {
+  const { id } = useParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [confidenceThreshold, setConfidenceThreshold] = useState(80);
+  const [duplicates, setDuplicates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [currentFile, setCurrentFile] = useState(null);
 
-  const duplicates = [
-    {
-      id: 1,
-      original: { name: 'Employee Data 2024', department: 'HR', date: '2024-02-20' },
-      duplicate: { name: 'Employee Data 2024', department: 'HR', date: '2024-02-21' },
-      confidence: 85,
-      status: 'pending'
-    },
-    {
-      id: 2,
-      original: { name: 'Sales Report Q1', department: 'Finance', date: '2024-02-19' },
-      duplicate: { name: 'Sales Report Q1', department: 'Finance', date: '2024-02-19' },
-      confidence: 92,
-      status: 'resolved'
-    },
-    {
-      id: 3,
-      original: { name: 'Marketing Campaign', department: 'Marketing', date: '2024-02-18' },
-      duplicate: { name: 'Marketing Campaign', department: 'Marketing', date: '2024-02-18' },
-      confidence: 78,
-      status: 'rejected'
-    }
-  ];
+  useEffect(() => {
+    const fetchDuplicates = async () => {
+      try {
+        setLoading(true);
+        if (id) {
+          console.log('Fetching details for record:', id);
+          const response = await datasetService.getDatasetDetails(id);
+          console.log('Dataset details response:', response);
+          
+          if (response.success) {
+            setCurrentFile(response.file);
+            console.log('File duplicates:', response.file.duplicates);
+            
+            if (response.file.duplicates?.duplicatePairs?.length > 0) {
+              console.log('Processing duplicate pairs...');
+              const processedDuplicates = response.file.duplicates.duplicatePairs
+                .map(pair => {
+                  try {
+                    return {
+                      original: typeof pair.original === 'string' ? JSON.parse(pair.original) : pair.original,
+                      duplicate: typeof pair.duplicate === 'string' ? JSON.parse(pair.duplicate) : pair.duplicate,
+                      confidence: pair.confidence,
+                      rowNumber1: pair.rowNumber1,
+                      rowNumber2: pair.rowNumber2
+                    };
+                  } catch (error) {
+                    console.error('Error processing duplicate pair:', error);
+                    return null;
+                  }
+                })
+                .filter(Boolean);
+              
+              console.log('Processed duplicates:', processedDuplicates);
+              setDuplicates(processedDuplicates);
+            } else {
+              console.log('No duplicates found in file');
+              setDuplicates([]);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching duplicates:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: error.message || "Failed to fetch duplicates"
+        });
+        setDuplicates([]);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const filteredDuplicates = duplicates.filter(dup =>
-    dup.original.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    dup.duplicate.name.toLowerCase().includes(searchTerm.toLowerCase())
+    fetchDuplicates();
+  }, [id]);
+
+  const filteredDuplicates = duplicates.filter(dup => 
+    dup.confidence >= confidenceThreshold &&
+    (Object.values(dup.original).some(val => 
+      val?.toString().toLowerCase().includes(searchTerm.toLowerCase())
+    ) ||
+    Object.values(dup.duplicate).some(val => 
+      val?.toString().toLowerCase().includes(searchTerm.toLowerCase())
+    ))
   );
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'pending': return 'text-yellow-500';
-      case 'resolved': return 'text-green-500';
-      case 'rejected': return 'text-red-500';
-      default: return 'text-gray-500';
+  const renderDifferenceHighlight = (value1, value2) => {
+    if (value1 === value2) {
+      return <span className="text-green-600">{value1}</span>;
     }
+    return <span className="text-red-600">{value1} ≠ {value2}</span>;
   };
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'pending': return <AlertCircle className="w-5 h-5" />;
-      case 'resolved': return <CheckCircle2 className="w-5 h-5" />;
-      case 'rejected': return <XCircle className="w-5 h-5" />;
-      default: return null;
-    }
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Duplicate Detection</h1>
-        <p className="text-gray-600">Manage and resolve duplicate datasets</p>
+        <h1 className="text-2xl font-bold mb-2">Duplicate Analysis</h1>
+        <p className="text-gray-600">
+          {currentFile?.filename} - Found {duplicates.length} potential duplicates
+        </p>
       </div>
 
-      <div className="flex gap-4 mb-6">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+      <div className="mb-6 flex gap-4">
+        <div className="flex-1">
           <Input
-            placeholder="Search duplicates..."
+            type="text"
+            placeholder="Search in duplicates..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">Confidence:</span>
-          <Input
-            type="number"
-            min="0"
-            max="100"
-            value={confidenceThreshold}
-            onChange={(e) => setConfidenceThreshold(e.target.value)}
-            className="w-20"
-          />
-          <span className="text-sm text-gray-600">%</span>
+        <div className="w-64">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">Confidence:</span>
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              value={confidenceThreshold}
+              onChange={(e) => setConfidenceThreshold(Number(e.target.value))}
+            />
+            <span className="text-sm">%</span>
+          </div>
         </div>
-        <Button>Scan for Duplicates</Button>
       </div>
 
-      <div className="space-y-4">
-        {filteredDuplicates.map((duplicate) => (
-          <div key={duplicate.id} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-2">
-                <span className={getStatusColor(duplicate.status)}>
-                  {getStatusIcon(duplicate.status)}
-                </span>
-                <span className="text-sm font-medium text-gray-600">
-                  Match Confidence: {duplicate.confidence}%
+      {filteredDuplicates.length > 0 ? (
+        <div className="space-y-6">
+          {filteredDuplicates.map((dup, index) => (
+            <div key={index} className="bg-white rounded-lg shadow p-6 border border-gray-200">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Duplicate Pair #{index + 1}</h3>
+                <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                  {dup.confidence}% Similar
                 </span>
               </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm">
-                  Ignore
-                </Button>
-                <Button size="sm">
-                  Merge
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium text-gray-900">Original Record</h3>
-                <div className="bg-gray-50 p-4 rounded-md">
-                  <dl className="space-y-1">
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-500">Name:</dt>
-                      <dd className="text-sm text-gray-900">{duplicate.original.name}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-500">Department:</dt>
-                      <dd className="text-sm text-gray-900">{duplicate.original.department}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-500">Date:</dt>
-                      <dd className="text-sm text-gray-900">{duplicate.original.date}</dd>
-                    </div>
-                  </dl>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="font-medium mb-2">Original Record (Row {dup.rowNumber1})</h4>
+                  <div className="space-y-2">
+                    {Object.entries(dup.original).map(([key, value]) => (
+                      <div key={key} className="text-sm">
+                        <span className="font-medium">{key}:</span>{' '}
+                        {renderDifferenceHighlight(value, dup.duplicate[key])}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-medium mb-2">Duplicate Record (Row {dup.rowNumber2})</h4>
+                  <div className="space-y-2">
+                    {Object.entries(dup.duplicate).map(([key, value]) => (
+                      <div key={key} className="text-sm">
+                        <span className="font-medium">{key}:</span>{' '}
+                        {renderDifferenceHighlight(value, dup.original[key])}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium text-gray-900">Duplicate Record</h3>
-                <div className="bg-gray-50 p-4 rounded-md">
-                  <dl className="space-y-1">
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-500">Name:</dt>
-                      <dd className="text-sm text-gray-900">{duplicate.duplicate.name}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-500">Department:</dt>
-                      <dd className="text-sm text-gray-900">{duplicate.duplicate.department}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-500">Date:</dt>
-                      <dd className="text-sm text-gray-900">{duplicate.duplicate.date}</dd>
-                    </div>
-                  </dl>
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <h4 className="font-medium mb-2">Matching Fields:</h4>
+                <div className="text-sm text-gray-600">
+                  {Object.keys(dup.original).filter(key => 
+                    dup.original[key] === dup.duplicate[key]
+                  ).join(', ')}
                 </div>
               </div>
             </div>
-          </div>
-        ))}
-
-        {filteredDuplicates.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No duplicates found.</p>
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12 bg-gray-50 rounded-lg">
+          <p className="text-gray-500">No duplicates found matching your criteria</p>
+        </div>
+      )}
     </div>
   );
 };

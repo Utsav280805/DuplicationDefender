@@ -5,7 +5,7 @@ export const uploadFile = async (file, metadata) => {
   try {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('department', metadata.department);
+    formData.append('fileType', metadata.fileType);
     formData.append('description', metadata.description);
     formData.append('tags', metadata.tags.join(','));
 

@@ -8,6 +8,11 @@ const { Record } = require('../models/Record');
 const { logToFile } = require('../../utils/logger');
 const { checkForDuplicates } = require('../../utils/duplicateCheck');
 
+/**
+ * @typedef {import('express').Request & { user: { _id: string, id: string } }} AuthRequest
+ * @typedef {import('express').Response} Response
+ */
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -50,6 +55,10 @@ router.use((req, res, next) => {
 });
 
 // Upload new record
+/** 
+ * @param {AuthRequest} req 
+ * @param {Response} res 
+ */
 router.post('/upload', auth, upload.single('file'), async (req, res) => {
   let newRecord = null;
   try {
@@ -91,23 +100,20 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
       analysisResult: {
         internalDuplicates: {
           count: 0,
-          pairs: new mongoose.Types.DocumentArray([])
+          pairs: []
         },
         localStorageDuplicates: {
           filesChecked: 0,
-          duplicatesFound: new mongoose.Types.DocumentArray([])
+          duplicatesFound: []
         },
         lastAnalyzed: null,
         error: null
       }
     });
 
-    logToFile(`Record to save: ${JSON.stringify(newRecord.toObject(), null, 2)}`);
-    
     await newRecord.save();
-    logToFile('Record saved successfully to database');
 
-    // Start analysis immediately
+    // Start analysis
     try {
       newRecord.status = 'analyzing';
       await newRecord.save();
@@ -116,14 +122,12 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
       const fileResult = await checkForDuplicates(req.file.path);
       
       // Update internal duplicates
-      newRecord.analysisResult.internalDuplicates.pairs = new mongoose.Types.DocumentArray(
-        fileResult.duplicatePairs.map(pair => ({
-          record1Index: pair.index1,
-          record2Index: pair.index2,
-          similarity: pair.similarity
-        }))
-      );
-      newRecord.analysisResult.internalDuplicates.count = fileResult.duplicatePairs.length;
+      newRecord.analysisResult.internalDuplicates.pairs = fileResult.duplicates.map(dup => ({
+        record1Index: dup.rowNumber1,
+        record2Index: dup.rowNumber2,
+        similarity: dup.similarity
+      }));
+      newRecord.analysisResult.internalDuplicates.count = fileResult.duplicates.length;
 
       // Check local storage duplicates
       const existingFiles = await Record.find({ 
@@ -132,22 +136,20 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
       });
 
       let filesChecked = 0;
-      const localDuplicates = new mongoose.Types.DocumentArray([]);
+      const localDuplicates = [];
 
       for (const file of existingFiles) {
         filesChecked++;
         const result = await checkForDuplicates(file.filePath);
-        if (result.duplicatePairs.length > 0) {
+        if (result.duplicates.length > 0) {
           localDuplicates.push({
             fileId: file._id,
             fileName: file.name,
-            duplicatePairs: new mongoose.Types.DocumentArray(
-              result.duplicatePairs.map(pair => ({
-                record1Index: pair.index1,
-                record2Index: pair.index2,
-                similarity: pair.similarity
-              }))
-            )
+            duplicatePairs: result.duplicates.map(dup => ({
+              record1Index: dup.rowNumber1,
+              record2Index: dup.rowNumber2,
+              similarity: dup.similarity
+            }))
           });
         }
       }
@@ -175,6 +177,7 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
       
       logToFile(`Sending response: ${JSON.stringify(response, null, 2)}`);
       res.status(201).json(response);
+
     } catch (error) {
       console.error('Error analyzing file:', error);
       newRecord.status = 'error';
@@ -189,12 +192,12 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
         error: error.message
       });
     }
+
   } catch (error) {
     logToFile(`Error uploading file: ${error.message}`);
     logToFile(`Error stack: ${error.stack}`);
     console.error('Error uploading file:', error);
     
-    // Update record status if it exists
     if (newRecord) {
       newRecord.status = 'error';
       if (!newRecord.analysisResult) {
@@ -212,6 +215,10 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
 });
 
 // Analyze file for duplicates
+/** 
+ * @param {AuthRequest} req 
+ * @param {Response} res 
+ */
 router.post('/analyze', auth, upload.single('file'), async (req, res) => {
   let currentRecord = null;
   try {
@@ -244,11 +251,11 @@ router.post('/analyze', auth, upload.single('file'), async (req, res) => {
         analysisResult: {
           internalDuplicates: {
             count: 0,
-            pairs: new mongoose.Types.DocumentArray([])
+            pairs: []
           },
           localStorageDuplicates: {
             filesChecked: 0,
-            duplicatesFound: new mongoose.Types.DocumentArray([])
+            duplicatesFound: []
           },
           lastAnalyzed: null,
           error: null
@@ -262,11 +269,11 @@ router.post('/analyze', auth, upload.single('file'), async (req, res) => {
       currentRecord.analysisResult = {
         internalDuplicates: {
           count: 0,
-          pairs: new mongoose.Types.DocumentArray([])
+          pairs: []
         },
         localStorageDuplicates: {
           filesChecked: 0,
-          duplicatesFound: new mongoose.Types.DocumentArray([])
+          duplicatesFound: []
         },
         lastAnalyzed: null,
         error: null
@@ -291,14 +298,12 @@ router.post('/analyze', auth, upload.single('file'), async (req, res) => {
     const fileResult = await checkForDuplicates(req.file.path);
     
     // Update internal duplicates
-    currentRecord.analysisResult.internalDuplicates.pairs = new mongoose.Types.DocumentArray(
-      fileResult.duplicatePairs.map(pair => ({
-        record1Index: pair.index1,
-        record2Index: pair.index2,
-        similarity: pair.similarity
-      }))
-    );
-    currentRecord.analysisResult.internalDuplicates.count = fileResult.duplicatePairs.length;
+    currentRecord.analysisResult.internalDuplicates.pairs = fileResult.duplicates.map(pair => ({
+      record1Index: pair.index1,
+      record2Index: pair.index2,
+      similarity: pair.similarity
+    }));
+    currentRecord.analysisResult.internalDuplicates.count = fileResult.duplicates.length;
 
     // Check local storage duplicates
     const existingFiles = await Record.find({ 
@@ -307,22 +312,20 @@ router.post('/analyze', auth, upload.single('file'), async (req, res) => {
     });
 
     let filesChecked = 0;
-    const localDuplicates = new mongoose.Types.DocumentArray([]);
+    const localDuplicates = [];
 
     for (const file of existingFiles) {
       filesChecked++;
       const result = await checkForDuplicates(file.filePath);
-      if (result.duplicatePairs.length > 0) {
+      if (result.duplicates.length > 0) {
         localDuplicates.push({
           fileId: file._id,
           fileName: file.name,
-          duplicatePairs: new mongoose.Types.DocumentArray(
-            result.duplicatePairs.map(pair => ({
-              record1Index: pair.index1,
-              record2Index: pair.index2,
-              similarity: pair.similarity
-            }))
-          )
+          duplicatePairs: result.duplicates.map(pair => ({
+            record1Index: pair.index1,
+            record2Index: pair.index2,
+            similarity: pair.similarity
+          }))
         });
       }
     }
@@ -367,6 +370,10 @@ router.post('/analyze', auth, upload.single('file'), async (req, res) => {
 });
 
 // Get analysis status
+/** 
+ * @param {AuthRequest} req 
+ * @param {Response} res 
+ */
 router.get('/analysis-status/:recordId', auth, async (req, res) => {
   try {
     const existingRecord = await Record.findOne({
@@ -397,6 +404,10 @@ router.get('/analysis-status/:recordId', auth, async (req, res) => {
 });
 
 // Get all records
+/** 
+ * @param {AuthRequest} req 
+ * @param {Response} res 
+ */
 router.get('/', auth, async (req, res) => {
   try {
     const records = await Record.find({ createdBy: req.user._id })
@@ -428,6 +439,10 @@ router.get('/', auth, async (req, res) => {
 });
 
 // Download record
+/** 
+ * @param {AuthRequest} req 
+ * @param {Response} res 
+ */
 router.get('/:id/download', auth, async (req, res) => {
   try {
     const record = await Record.findOne({
@@ -460,6 +475,10 @@ router.get('/:id/download', auth, async (req, res) => {
 });
 
 // Get single record
+/** 
+ * @param {AuthRequest} req 
+ * @param {Response} res 
+ */
 router.get('/:id', auth, async (req, res) => {
   try {
     const record = await Record.findOne({

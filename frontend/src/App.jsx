@@ -17,6 +17,7 @@ import PrivateRoute from './components/PrivateRoute';
 import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import authService from './services/authService';
 
 const queryClient = new QueryClient();
 
@@ -29,11 +30,11 @@ const router = createBrowserRouter([
   },
   {
     path: "/signin",
-    element: localStorage.getItem('token') ? <Navigate to="/dashboard" /> : <SignIn />
+    element: authService.isAuthenticated() ? <Navigate to="/dashboard" /> : <SignIn />
   },
   {
     path: "/signup",
-    element: localStorage.getItem('token') ? <Navigate to="/dashboard" /> : <SignUp />
+    element: authService.isAuthenticated() ? <Navigate to="/dashboard" /> : <SignUp />
   },
   {
     path: "/verify-email",
@@ -68,6 +69,10 @@ const router = createBrowserRouter([
         element: <Duplicates />
       },
       {
+        path: "duplicates/:id",
+        element: <Duplicates />
+      },
+      {
         path: "records",
         element: <Records />
       },
@@ -84,7 +89,7 @@ const router = createBrowserRouter([
   // Catch-all route
   {
     path: "*",
-    element: localStorage.getItem('token') ? <Navigate to="/dashboard" /> : <Navigate to="/" />
+    element: authService.isAuthenticated() ? <Navigate to="/dashboard" /> : <Navigate to="/" />
   }
 ], {
   future: {

@@ -13,19 +13,41 @@ yarn-error.log
 dist/
 build/
 
+# Logs
+logs/
+*.log
+
 # IDE and editor files
 .idea/
 .vscode/
 *.swp
 *.swo
+.DS_Store
+
+# Testing
+coverage/
+
+# Temporary files
+tmp/
+temp/
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
 
 # OS files
-.DS_Store
 Thumbs.db
-
-# Logs
-logs/
-*.log
 
 # Upload directory
 uploads/ 

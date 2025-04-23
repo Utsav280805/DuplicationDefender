@@ -1,26 +1,33 @@
-// API Configuration
-export const API_BASE_URL = 'http://localhost:5000/api';
+// API Base URL
+export const API_BASE_URL = 'http://localhost:5000';
 
+// API Endpoints
 export const API_ENDPOINTS = {
   // Auth endpoints
-  SIGN_IN: `${API_BASE_URL}/auth/login`,
-  SIGN_UP: `${API_BASE_URL}/auth/register`,
-  FORGOT_PASSWORD: `${API_BASE_URL}/auth/forgot-password`,
-  RESET_PASSWORD: `${API_BASE_URL}/auth/reset-password`,
-  VERIFY_EMAIL: `${API_BASE_URL}/auth/verify-email`,
-  RESEND_VERIFICATION: `${API_BASE_URL}/auth/resend-verification`,
-  CHANGE_PASSWORD: `${API_BASE_URL}/auth/change-password`,
-  GET_ME: `${API_BASE_URL}/auth/me`,
+  LOGIN: `${API_BASE_URL}/api/auth/login`,
+  REGISTER: `${API_BASE_URL}/api/auth/register`,
+  FORGOT_PASSWORD: `${API_BASE_URL}/api/auth/forgot-password`,
+  RESET_PASSWORD: `${API_BASE_URL}/api/auth/reset-password`,
+  VERIFY_EMAIL: `${API_BASE_URL}/api/auth/verify-email`,
+  RESEND_VERIFICATION: `${API_BASE_URL}/api/auth/resend-verification`,
+  CHANGE_PASSWORD: `${API_BASE_URL}/api/auth/change-password`,
+  GET_ME: `${API_BASE_URL}/api/auth/me`,
   
   // File endpoints
-  UPLOAD_FILE: `${API_BASE_URL}/files/upload`,
-  GET_FILES: `${API_BASE_URL}/files`,
-  GET_FILE: `${API_BASE_URL}/files/:id`,
-  DOWNLOAD_FILE: `${API_BASE_URL}/files/:id/download`,
-  DELETE_FILE: `${API_BASE_URL}/files/:id`,
-  CHECK_DUPLICATES: `${API_BASE_URL}/files/:id/check-duplicates`,
-  HEALTH: `${API_BASE_URL}/health`,
-  STATS: `${API_BASE_URL}/stats`
+  GET_FILES: `${API_BASE_URL}/api/files`,
+  UPLOAD_FILE: `${API_BASE_URL}/api/files/upload`,
+  UPLOAD_PROGRESS: `${API_BASE_URL}/api/files/upload-progress`,
+  GET_FILE: `${API_BASE_URL}/api/files/:id`,
+  DOWNLOAD_FILE: `${API_BASE_URL}/api/files/:id/download`,
+  DELETE_FILE: `${API_BASE_URL}/api/files/:id`,
+  CHECK_DUPLICATES: `${API_BASE_URL}/api/files/:id/check-duplicates`,
+  ANALYZE_FILE: `${API_BASE_URL}/api/files/analyze`,
+  HEALTH: `${API_BASE_URL}/api/health`,
+  STATS: `${API_BASE_URL}/api/stats`,
+  
+  // User endpoints
+  GET_USER_PROFILE: `${API_BASE_URL}/api/users/profile`,
+  UPDATE_USER_PROFILE: `${API_BASE_URL}/api/users/profile`
 };
 
 export const API_CONFIG = {
@@ -62,7 +69,8 @@ export const handleApiError = async (response) => {
 // Check if user is authenticated
 export const isAuthenticated = () => {
   const token = localStorage.getItem('token');
-  return !!token;
+  const user = localStorage.getItem('user');
+  return !!(token && user);
 };
 
 // Helper function to check if the server is running

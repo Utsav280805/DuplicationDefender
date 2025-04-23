@@ -1,26 +1,24 @@
 // @ts-nocheck
 const mongoose = require('mongoose');
 
-// Define sub-schemas first
+// Duplicate pair inside a file
 const DuplicatePairSchema = new mongoose.Schema({
   record1Index: { type: Number, required: true },
   record2Index: { type: Number, required: true },
   similarity: { type: Number, required: true }
 }, { _id: false });
 
+// Duplicate matches against local storage files
 const LocalStorageDuplicateSchema = new mongoose.Schema({
   fileId: { type: mongoose.Schema.Types.ObjectId, ref: 'Record', required: true },
   fileName: { type: String, required: true },
   duplicatePairs: {
-    type: [{
-      record1Index: { type: Number, required: true },
-      record2Index: { type: Number, required: true },
-      similarity: { type: Number, required: true }
-    }],
+    type: [DuplicatePairSchema],
     default: []
   }
 }, { _id: false });
 
+// Internal + local storage analysis
 const AnalysisResultSchema = new mongoose.Schema({
   internalDuplicates: {
     count: { type: Number, default: 0 },
@@ -40,89 +38,99 @@ const AnalysisResultSchema = new mongoose.Schema({
   error: { type: String }
 }, { _id: false });
 
+// Cross-dataset duplicate detection
+const DuplicateAnalysisSchema = new mongoose.Schema({
+  status: {
+    type: String,
+    enum: ['pending', 'processing', 'completed', 'error'],
+    default: 'pending'
+  },
+  duplicates: [{
+    recordId: { type: mongoose.Schema.Types.ObjectId, ref: 'Record' },
+    fileName: String,
+    uploadDate: Date,
+    confidence: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 1
+    },
+    matchedFields: [{
+      fieldName: String,
+      similarity: {
+        type: Number,
+        required: true,
+        min: 0,
+        max: 1
+      }
+    }],
+    status: {
+      type: String,
+      enum: ['pending', 'confirmed', 'rejected'],
+      default: 'pending'
+    }
+  }],
+  lastAnalyzedAt: Date,
+  totalRecordsAnalyzed: { type: Number, default: 0 },
+  error: String
+});
+
+// Main record schema
 const recordSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  originalName: {
-    type: String,
-    required: true
-  },
+  fileName: { type: String, required: true, trim: true },
+  originalName: { type: String, required: true },
   fileType: {
     type: String,
     required: true,
-    enum: ['XLSX', 'XLS', 'CSV']
+    enum: ['CSV', 'XLS', 'XLSX']
   },
-  filePath: {
-    type: String,
-    required: true
-  },
-  size: {
-    type: String,
-    required: true
-  },
-  description: {
-    type: String,
-    trim: true,
-    default: ''
-  },
-  department: {
-    type: String,
-    default: 'Unassigned',
-    trim: true
-  },
-  tags: {
-    type: [String],
-    default: []
-  },
-  accessLevel: {
-    type: String,
-    enum: ['private', 'public', 'shared'],
-    default: 'private'
-  },
-  status: {
-    type: String,
-    enum: ['pending', 'analyzing', 'analyzed', 'error'],
-    default: 'pending'
+  filePath: { type: String, required: true },
+  fileSize: { type: Number, required: true },
+  department: { type: String, required: true, trim: true },
+  description: { type: String, trim: true, default: '' },
+  tags: [{ type: String, trim: true }],
+  uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  uploadedAt: { type: Date, default: Date.now },
+  fileContent: {
+    headers: [String],
+    rows: [{ type: Map, of: String }],
+    rowCount: Number,
+    columnCount: Number
   },
   analysisResult: {
     type: AnalysisResultSchema,
     default: () => ({
-      internalDuplicates: {
-        count: 0,
-        pairs: []
-      },
-      localStorageDuplicates: {
-        filesChecked: 0,
-        duplicatesFound: []
-      },
+      internalDuplicates: { count: 0, pairs: [] },
+      localStorageDuplicates: { filesChecked: 0, duplicatesFound: [] },
       lastAnalyzed: null,
       error: null
     })
   },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+  duplicateAnalysis: {
+    type: DuplicateAnalysisSchema,
+    default: () => ({
+      status: 'pending',
+      duplicates: [],
+      totalRecordsAnalyzed: 0,
+      lastAnalyzedAt: new Date()
+    })
   }
 }, {
   timestamps: true
 });
 
-// Create indexes for faster querying
-recordSchema.index({ name: 1, createdBy: 1 });
-recordSchema.index({ department: 1, createdBy: 1 });
-recordSchema.index({ status: 1, createdBy: 1 });
+// Indexes for faster queries
+recordSchema.index({ fileName: 1, uploadedBy: 1 });
+recordSchema.index({ department: 1, uploadedBy: 1 });
+recordSchema.index({ 'fileContent.headers': 1 });
+recordSchema.index({ originalName: 1, uploadedBy: 1 });
 
-// Update the updatedAt timestamp before saving
-recordSchema.pre(['save'], function(next) {
+// Pre-save middleware for updatedAt
+recordSchema.pre('save', function (next) {
   this.updatedAt = new Date();
   next();
 });
 
-// @ts-ignore
+// Model export
 const Record = mongoose.model('Record', recordSchema);
-
-module.exports = { Record }; 
+module.exports = { Record };

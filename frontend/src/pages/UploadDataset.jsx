@@ -21,7 +21,6 @@ const UploadDataset = () => {
   });
 
   useEffect(() => {
-    // Check authentication status
     if (!authService.isAuthenticated()) {
       toast({
         variant: "destructive",
@@ -32,37 +31,28 @@ const UploadDataset = () => {
       return;
     }
 
-    // Show loading animation for 4 seconds to match the animation duration
     const timer = setTimeout(() => {
       setIsLoading(false);
     }, 4000);
     return () => clearTimeout(timer);
   }, [navigate]);
 
-  // File type detection based on extension
   const detectFileType = (fileName) => {
     const extension = fileName.split('.').pop().toLowerCase();
     switch (extension) {
-      case 'csv':
-        return 'csv';
+      case 'csv': return 'csv';
       case 'xlsx':
-      case 'xls':
-        return 'xlsx';
-      case 'json':
-        return 'json';
-      case 'css':
-        return 'css';
-      default:
-        return '';
+      case 'xls': return 'xlsx';
+      case 'json': return 'json';
+      case 'css': return 'css';
+      default: return '';
     }
   };
 
   const onDrop = useCallback((acceptedFiles) => {
-    console.log('Files dropped:', acceptedFiles);
     if (acceptedFiles.length > 0) {
       const file = acceptedFiles[0];
       setSelectedFile(file);
-      // Automatically detect and set file type
       setMetadata(prev => ({
         ...prev,
         fileType: detectFileType(file.name)
@@ -80,7 +70,7 @@ const UploadDataset = () => {
       'text/css': ['.css']
     },
     maxFiles: 1,
-    maxSize: 10 * 1024 * 1024 // 10MB
+    maxSize: 10 * 1024 * 1024
   });
 
   const handleMetadataChange = (e) => {
@@ -103,22 +93,18 @@ const UploadDataset = () => {
 
     try {
       setIsUploading(true);
-      console.log('Starting file upload...');
-      console.log('Uploading file:', selectedFile.name);
 
-      // Check authentication
       if (!authService.isAuthenticated()) {
         throw new Error('Please sign in to upload files');
       }
 
       const result = await datasetService.uploadDataset(selectedFile, metadata);
-      
+
       toast({
         title: "Success",
         description: "File uploaded successfully",
       });
 
-      // If there are duplicates, show a warning
       if (result.duplicates && result.duplicates.length > 0) {
         toast({
           variant: "warning",
@@ -129,7 +115,6 @@ const UploadDataset = () => {
 
       navigate('/records');
     } catch (error) {
-      console.error('Upload error:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -149,6 +134,8 @@ const UploadDataset = () => {
     });
   };
 
+  if (isLoading) return <Loader3D />;
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-3xl mx-auto">
@@ -156,33 +143,12 @@ const UploadDataset = () => {
         <p className="text-gray-600 mb-8">Upload your data files for duplicate detection</p>
 
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div
-            {...getRootProps()}
-            className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-              isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-500'
-            }`}
-          >
+          <div {...getRootProps()} className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-500'}`}>
             <input {...getInputProps()} />
             <div className="flex flex-col items-center justify-center">
-              <svg
-                className="w-12 h-12 text-gray-400 mb-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                />
-              </svg>
-              <p className="text-gray-600">
-                Drag & drop files here, or click to select files
-              </p>
-              <p className="text-sm text-gray-500 mt-2">
-                Supported formats: CSV, XLSX, XLS, JSON, CSS (Max size: 10MB)
-              </p>
+              <Upload className="w-12 h-12 text-gray-400 mb-4" />
+              <p className="text-gray-600">Drag & drop files here, or click to select files</p>
+              <p className="text-sm text-gray-500 mt-2">Supported formats: CSV, XLSX, XLS, JSON, CSS (Max size: 10MB)</p>
             </div>
           </div>
 
@@ -194,15 +160,10 @@ const UploadDataset = () => {
                   <FileText className="w-6 h-6 text-gray-400 mr-3" />
                   <div>
                     <p className="font-medium">{selectedFile.name}</p>
-                    <p className="text-sm text-gray-500">
-                      {(selectedFile.size / 1024).toFixed(2)} KB
-                    </p>
+                    <p className="text-sm text-gray-500">{(selectedFile.size / 1024).toFixed(2)} KB</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedFile(null)}
-                  className="text-red-500 hover:text-red-700"
-                >
+                <button onClick={() => setSelectedFile(null)} className="text-red-500 hover:text-red-700">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -213,9 +174,7 @@ const UploadDataset = () => {
             <h3 className="font-semibold mb-4">File Information</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  File Type
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">File Type</label>
                 <select
                   name="fileType"
                   value={metadata.fileType}
@@ -231,9 +190,7 @@ const UploadDataset = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea
                   name="description"
                   value={metadata.description}
@@ -245,9 +202,7 @@ const UploadDataset = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tags
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tags</label>
                 <input
                   type="text"
                   name="tags"
@@ -262,12 +217,7 @@ const UploadDataset = () => {
         </div>
 
         <div className="flex justify-end space-x-4">
-          <Button
-            variant="outline"
-            onClick={handleClear}
-          >
-            Clear All
-          </Button>
+          <Button variant="outline" onClick={handleClear}>Clear All</Button>
           <Button
             variant="default"
             onClick={handleUpload}

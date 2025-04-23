@@ -27,7 +27,7 @@ const authService = {
     try {
       const userStr = localStorage.getItem(USER_KEY);
       if (!userStr) return null;
-      
+
       const user = JSON.parse(userStr);
       if (!validateUserData(user)) {
         console.error('Invalid user data in localStorage:', user);
@@ -44,7 +44,7 @@ const authService = {
 
   isAuthenticated: () => {
     const token = localStorage.getItem(TOKEN_KEY);
-    const user = authService.getUser(); // Use getUser to validate the data
+    const user = authService.getUser(); // Validate the user as well
     return !!(token && user);
   },
 
@@ -62,7 +62,7 @@ const authService = {
 
       const data = await response.json();
       console.log('Signup response:', data);
-      
+
       if (!response.ok) {
         throw new Error(data.message || 'Failed to create account');
       }
@@ -81,7 +81,7 @@ const authService = {
   login: async (email, password) => {
     try {
       console.log('Attempting login with email:', email);
-      
+
       const response = await fetch(API_ENDPOINTS.SIGN_IN, {
         method: 'POST',
         headers: {
@@ -93,7 +93,7 @@ const authService = {
 
       const data = await response.json();
       console.log('Login response:', data);
-      
+
       if (!response.ok) {
         throw new Error(data.message || 'Invalid credentials');
       }
@@ -142,7 +142,7 @@ const authService = {
 
       const data = await response.json();
       console.log('Refresh user data response:', data);
-      
+
       if (!response.ok) {
         throw new Error(data.message || 'Failed to refresh user data');
       }
@@ -172,7 +172,7 @@ const authService = {
       });
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.message || 'Failed to resend verification email');
       }
@@ -186,3 +186,8 @@ const authService = {
 };
 
 export default authService;
+
+export const getUser = () => {
+  const user = localStorage.getItem(USER_KEY);
+  return user ? JSON.parse(user) : null;
+};

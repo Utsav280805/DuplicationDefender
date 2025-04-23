@@ -1,3 +1,4 @@
+
 const nodemailer = require('nodemailer');
 
 // Configure nodemailer transporter
@@ -70,6 +71,14 @@ const sendVerificationEmail = async (email, verificationUrl) => {
     console.error('Error sending verification email:', error);
     throw error;
   }
+
+// Temporary mock email service
+const sendVerificationEmail = async (email, verificationUrl) => {
+    console.log('Email verification disabled temporarily');
+    console.log('Would have sent verification email to:', email);
+    console.log('With verification URL:', verificationUrl);
+    return true;
+
 };
 
 // Function to send password reset email
@@ -109,5 +118,14 @@ const sendPasswordResetEmail = async (email, resetUrl) => {
 module.exports = {
   verifyConnection,
   sendVerificationEmail,
-  sendPasswordResetEmail
+  sendPasswordResetEmail};
+    console.log('Password reset email disabled temporarily');
+    console.log('Would have sent password reset email to:', email);
+    console.log('With reset URL:', resetUrl);
+    return true;
+};
+
+module.exports = {
+    sendVerificationEmail,
+    sendPasswordResetEmail
 };

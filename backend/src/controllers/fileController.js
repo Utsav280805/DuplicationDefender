@@ -9,6 +9,11 @@ const mongoose = require('mongoose');
  * @typedef {import('../../utils/duplicateCheck').DuplicateResult} DuplicateResult
  */
 
+const { generateFileHash, checkDuplicate, findSimilarFiles } = require('../../utils/duplicateCheck');
+const csv = require('csv-parser');
+const createCsvWriter = require('csv-writer').createObjectCsvWriter;
+
+
 // Helper function to check if file/directory exists
 const checkExists = async (path) => {
   try {
@@ -556,5 +561,96 @@ module.exports = {
   downloadFile,
   deleteFile,
   checkForDuplicatesHandler,
-  uploadProgress
+  uploadProgress,
+};
+const findDuplicates = async (filePath) => {
+    const results = [];
+    const duplicates = new Map();
+
+    return new Promise((resolve, reject) => {
+        fs.createReadStream(filePath)
+            .pipe(csv())
+            .on('data', (data) => {
+                // Create a unique key based on all fields
+                const key = Object.values(data).join('|');
+                if (duplicates.has(key)) {
+                    duplicates.set(key, duplicates.get(key) + 1);
+                } else {
+                    duplicates.set(key, 1);
+                }
+                results.push(data);
+            })
+            .on('end', () => {
+                const duplicateEntries = results.filter(data => {
+                    const key = Object.values(data).join('|');
+                    return duplicates.get(key) > 1;
+                });
+
+                resolve({
+                    totalRows: results.length,
+                    duplicateRows: duplicateEntries.length,
+                    duplicates: duplicateEntries
+                });
+            })
+            .on('error', (error) => {
+                reject(error);
+            });
+    });
+};
+
+const generateReport = async (duplicates, originalFilePath) => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const reportPath = path.join(path.dirname(originalFilePath), `duplicate-report-${timestamp}.csv`);
+    
+    const csvWriter = createCsvWriter({
+        path: reportPath,
+        header: Object.keys(duplicates[0]).map(id => ({id, title: id}))
+    });
+
+    await csvWriter.writeRecords(duplicates);
+    return reportPath;
+};
+
+const scanFile = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const filePath = req.file.path;
+        const results = await findDuplicates(filePath);
+        
+        if (results.duplicates.length > 0) {
+            const reportPath = await generateReport(results.duplicates, filePath);
+            results.reportPath = reportPath;
+        }
+
+        res.json(results);
+    } catch (error) {
+        console.error('Error scanning file:', error);
+        res.status(500).json({ error: 'Error processing file' });
+    }
+};
+
+const downloadReport = async (req, res) => {
+    try {
+        const { reportPath } = req.query;
+        if (!reportPath) {
+            return res.status(400).json({ error: 'Report path not provided' });
+        }
+
+        if (!fs.existsSync(reportPath)) {
+            return res.status(404).json({ error: 'Report not found' });
+        }
+
+        res.download(reportPath, path.basename(reportPath));
+    } catch (error) {
+        console.error('Error downloading report:', error);
+        res.status(500).json({ error: 'Error downloading report' });
+    }
+};
+
+module.exports = {
+    scanFile,
+    downloadReport
 };

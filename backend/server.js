@@ -4,6 +4,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const morgan = require('morgan');
 const path = require('path');
+
 const fs = require('fs').promises;
 const routes = require('./src/routes');
 
@@ -41,6 +42,29 @@ createRequiredDirectories().catch(err => {
   process.exit(1);
 });
 
+const fs = require('fs');
+const cookieParser = require('cookie-parser');
+
+// Debug environment variables
+console.log(process.env.MONGO_URI); // Should print the MongoDB URI
+
+console.log('Environment variables loaded:', {
+  MONGO_URI: process.env.MONGO_URI ? 'Present' : 'Missing',
+  PORT: process.env.PORT,
+  NODE_ENV: process.env.NODE_ENV
+});
+
+// Import routes
+const authRoutes = require('./src/routes/auth');
+const recordRoutes = require('./src/routes/records');
+const userRoutes = require('./src/routes/user');
+const duplicateRoutes = require('./src/routes/duplicates');
+const fileRoutes = require('./src/routes/fileRoutes');
+
+const app = express();
+const PORT = process.env.PORT || 8081;
+
+
 // Middleware
 app.use(morgan('dev')); // Logging
 app.use(cors({
@@ -55,8 +79,18 @@ app.use(cors({
   ],
   exposedHeaders: ['Content-Disposition', 'Content-Type'],
   credentials: true,
-  maxAge: 86400 // Cache preflight request for 24 hours
+  maxAge: 86400 ,// Cache preflight request for 24 hours
+  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8081', 
+          'http://127.0.0.1:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:8081'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: true,
+  exposedHeaders: ['Content-Disposition']
 }));
+
+// Enable pre-flight requests for all routes
+app.options('*', cors());
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -64,6 +98,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Health check endpoint
+app.use(cookieParser());
+app.use(morgan('dev'));
+
+// Health check route
 app.get('/api/health', (req, res) => {
   const isDbConnected = mongoose.connection.readyState === 1;
   res.json({ 
@@ -76,6 +114,15 @@ app.get('/api/health', (req, res) => {
 
 // Mount all routes under /api
 app.use('/api', routes);
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/records', recordRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/duplicates', duplicateRoutes);
+app.use('/api/files', fileRoutes);
+
+// Serve static files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -113,6 +160,14 @@ const connectDB = async (retries = 3) => {
       if (i === retries - 1) throw err;
       await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retrying
     }
+    await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+    console.log('MongoDB connected successfully');
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
   }
 };
 
@@ -124,6 +179,8 @@ const startServer = async () => {
       console.log(`Server is running on port ${port}`);
       console.log(`API URL: http://localhost:${port}/api`);
       console.log('MongoDB URI:', process.env.MONGODB_URI);
+    const server = app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
     });
   } catch (err) {
     console.error('Failed to start server:', err);

@@ -23,6 +23,7 @@ const userSchema = new mongoose.Schema({
   isEmailVerified: {
     type: Boolean,
     default: true
+
   },
   resetPasswordToken: String,
   resetPasswordExpires: Date,
@@ -55,9 +56,8 @@ userSchema.pre('save', async function(next) {
 
 // Generate auth token
 userSchema.methods.generateAuthToken = function() {
-  const user = this;
   const token = jwt.sign(
-    { _id: user._id.toString() },
+    { userId: this._id },
     process.env.JWT_SECRET,
     { expiresIn: '7d' }
   );
@@ -66,7 +66,7 @@ userSchema.methods.generateAuthToken = function() {
 
 // Check password
 userSchema.methods.checkPassword = async function(password) {
-  return bcrypt.compare(password, this.password);
+  return await bcrypt.compare(password, this.password);
 };
 
 // Remove sensitive data when converting to JSON
@@ -78,4 +78,4 @@ userSchema.methods.toJSON = function() {
 
 const User = mongoose.model('User', userSchema);
 
-module.exports = User; 
+module.exports = User;

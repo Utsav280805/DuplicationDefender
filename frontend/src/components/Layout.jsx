@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import { FileText, Home, Database, Search, Settings, Upload, LogOut, Bell, User, AlertTriangle, CheckCircle, Info } from 'lucide-react';
 import { toast } from './ui/use-toast';
+import { logout } from '../services/authService';
 
 const Layout = () => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -41,7 +42,7 @@ const Layout = () => {
     const userData = localStorage.getItem('user');
     
     if (!token || !userData) {
-      navigate('/signin');
+      navigate('/signup');
       return;
     }
     
@@ -49,13 +50,12 @@ const Layout = () => {
   }, [navigate]);
 
   if (!localStorage.getItem('token')) {
-    return <Navigate to="/signin" />;
+    return <Navigate to="/signup" />;
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/signin');
+    logout();
+    navigate('/signup');
     toast({
       title: "Success",
       description: "Logged out successfully",
